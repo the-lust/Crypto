@@ -1,0 +1,109 @@
+module Crypto {
+
+    pub const CHACHA20_BLOCK_SIZE: uint32 = 64u32;
+
+    pub struct ChaCha20Context {
+        pub state: uint32[16];
+    }
+
+    func ChaCha20Rotl32(x: uint32, n: uint32) -> uint32 {
+        return (x << n) | (x >> (32u32 - n));
+    }
+
+    func ChaCha20QuarterRound(a: *uint32, b: *uint32, c: *uint32, d: *uint32) {
+        *a = *a + *b; *d = *d ^ *a; *d = ChaCha20Rotl32(*d, 16u32);
+        *c = *c + *d; *b = *b ^ *c; *b = ChaCha20Rotl32(*b, 12u32);
+        *a = *a + *b; *d = *d ^ *a; *d = ChaCha20Rotl32(*d, 8u32);
+        *c = *c + *d; *b = *b ^ *c; *b = ChaCha20Rotl32(*b, 7u32);
+    }
+
+    pub func ChaCha20Init(ctx: *ChaCha20Context, key: *const uint8, nonce: *const uint8, counter: uint32) {
+        ctx.state[0]  = 0x61707865u32;
+        ctx.state[1]  = 0x3320646eu32;
+        ctx.state[2]  = 0x79622d32u32;
+        ctx.state[3]  = 0x6b206574u32;
+
+        var i: uint32 = 0u32;
+        while i < 8u32 {
+            let j = i * 4u32;
+            ctx.state[4u32 + i] = (key[j]        as uint32 << 24u32)
+                                | (key[j + 1u32] as uint32 << 16u32)
+                                | (key[j + 2u32] as uint32 <<  8u32)
+                                | (key[j + 3u32] as uint32);
+            i = i + 1u32;
+        }
+
+        ctx.state[12] = counter;
+
+        ctx.state[13] = (nonce[0] as uint32 << 24u32) | (nonce[1] as uint32 << 16u32) | (nonce[2] as uint32 << 8u32) | nonce[3] as uint32;
+        ctx.state[14] = (nonce[4] as uint32 << 24u32) | (nonce[5] as uint32 << 16u32) | (nonce[6] as uint32 << 8u32) | nonce[7] as uint32;
+        ctx.state[15] = (nonce[8] as uint32 << 24u32) | (nonce[9] as uint32 << 16u32) | (nonce[10] as uint32 << 8u32) | nonce[11] as uint32;
+    }
+
+    pub func ChaCha20Block(ctx: *ChaCha20Context, output: *uint8) {
+        var working: uint32[16];
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            working[i] = ctx.state[i];
+            i = i + 1u32;
+        }
+
+        var round: uint32 = 0u32;
+        while round < 10u32 {
+            ChaCha20QuarterRound(&working[0],  &working[4],  &working[8],  &working[12]);
+            ChaCha20QuarterRound(&working[1],  &working[5],  &working[9],  &working[13]);
+            ChaCha20QuarterRound(&working[2],  &working[6],  &working[10], &working[14]);
+            ChaCha20QuarterRound(&working[3],  &working[7],  &working[11], &working[15]);
+            ChaCha20QuarterRound(&working[0],  &working[5],  &working[10], &working[15]);
+            ChaCha20QuarterRound(&working[1],  &working[6],  &working[11], &working[12]);
+            ChaCha20QuarterRound(&working[2],  &working[7],  &working[8],  &working[13]);
+            ChaCha20QuarterRound(&working[3],  &working[4],  &working[9],  &working[14]);
+            round = round + 1u32;
+        }
+
+        i = 0u32;
+        while i < 16u32 {
+            let v = working[i] + ctx.state[i];
+            output[i * 4u32]       = ((v >> 24u32) & 0xFFu32) as uint8;
+            output[i * 4u32 + 1u32] = ((v >> 16u32) & 0xFFu32) as uint8;
+            output[i * 4u32 + 2u32] = ((v >>  8u32) & 0xFFu32) as uint8;
+            output[i * 4u32 + 3u32] = ( v           & 0xFFu32) as uint8;
+            i = i + 1u32;
+        }
+
+        ctx.state[12] = ctx.state[12] + 1u32;
+    }
+
+    pub func ChaCha20Xor(ctx: *ChaCha20Context, input: *const uint8, output: *uint8, len: uint32) {
+        var offset: uint32 = 0u32;
+        var keystream: uint8[64];
+
+        while offset < len {
+            ChaCha20Block(ctx, &keystream[0]);
+
+            var remaining = len - offset;
+            var take = (remaining < 64u32) ? remaining : 64u32;
+
+            var i: uint32 = 0u32;
+            while i < take {
+                output[offset + i] = input[offset + i] ^ keystream[i];
+                i = i + 1u32;
+            }
+
+            offset = offset + take;
+        }
+    }
+
+    pub func ChaCha20Encrypt(
+        key: *const uint8,
+        nonce: *const uint8,
+        counter: uint32,
+        input: *const uint8,
+        output: *uint8,
+        len: uint32
+    ) {
+        var ctx: ChaCha20Context;
+        ChaCha20Init(&ctx, key, nonce, counter);
+        ChaCha20Xor(&ctx, input, output, len);
+    }
+}

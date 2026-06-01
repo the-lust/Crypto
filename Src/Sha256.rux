@@ -1,0 +1,258 @@
+/*
+    Crypto — SHA-256 (FIPS 180-4)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
+module Crypto {
+
+
+    // Constants — digest and block sizes
+
+
+    pub const SHA256_DIGEST_SIZE: uint32 = 32u32;
+    pub const SHA256_BLOCK_SIZE:  uint32 = 64u32;
+
+
+    // Structures
+
+
+    pub struct Sha256Context {
+        pub state:  uint32[8];
+        pub count:  uint64;
+        pub buf:    uint8[64];
+        pub bufLen: uint32;
+    }
+
+
+    // Internal helpers
+
+
+    func Rotr32(x: uint32, n: uint32) -> uint32 {
+        return (x >> n) | (x << (32u32 - n));
+    }
+
+    func Sha256Ch(x: uint32, y: uint32, z: uint32) -> uint32 {
+        return (x & y) ^ (~x & z);
+    }
+
+    func Sha256Maj(x: uint32, y: uint32, z: uint32) -> uint32 {
+        return (x & y) ^ (x & z) ^ (y & z);
+    }
+
+    func Sha256USig0(x: uint32) -> uint32 {
+        return Rotr32(x,  2u32) ^ Rotr32(x, 13u32) ^ Rotr32(x, 22u32);
+    }
+
+    func Sha256USig1(x: uint32) -> uint32 {
+        return Rotr32(x,  6u32) ^ Rotr32(x, 11u32) ^ Rotr32(x, 25u32);
+    }
+
+    func Sha256LSig0(x: uint32) -> uint32 {
+        return Rotr32(x, 7u32) ^ Rotr32(x, 18u32) ^ (x >> 3u32);
+    }
+
+    func Sha256LSig1(x: uint32) -> uint32 {
+        return Rotr32(x, 17u32) ^ Rotr32(x, 19u32) ^ (x >> 10u32);
+    }
+
+    func Sha256StoreU32Be(out: *uint8, v: uint32) {
+        out[0] = ((v >> 24u32) & 0xFFu32) as uint8;
+        out[1] = ((v >> 16u32) & 0xFFu32) as uint8;
+        out[2] = ((v >>  8u32) & 0xFFu32) as uint8;
+        out[3] = ( v           & 0xFFu32) as uint8;
+    }
+
+    func Sha256StoreU64Be(out: *uint8, v: uint64) {
+        out[0] = ((v >> 56u64) & 0xFFu64) as uint8;
+        out[1] = ((v >> 48u64) & 0xFFu64) as uint8;
+        out[2] = ((v >> 40u64) & 0xFFu64) as uint8;
+        out[3] = ((v >> 32u64) & 0xFFu64) as uint8;
+        out[4] = ((v >> 24u64) & 0xFFu64) as uint8;
+        out[5] = ((v >> 16u64) & 0xFFu64) as uint8;
+        out[6] = ((v >>  8u64) & 0xFFu64) as uint8;
+        out[7] = ( v           & 0xFFu64) as uint8;
+    }
+
+    func Sha256ProcessBlock(ctx: *Sha256Context, block: *const uint8) {
+        // Round constants K[0..63] — first 32 bits of fractional parts
+        // of the cube roots of the first 64 primes
+        var K: uint32[64];
+        K[0]  = 0x428a2f98u32; K[1]  = 0x71374491u32; K[2]  = 0xb5c0fbcfu32; K[3]  = 0xe9b5dba5u32;
+        K[4]  = 0x3956c25bu32; K[5]  = 0x59f111f1u32; K[6]  = 0x923f82a4u32; K[7]  = 0xab1c5ed5u32;
+        K[8]  = 0xd807aa98u32; K[9]  = 0x12835b01u32; K[10] = 0x243185beu32; K[11] = 0x550c7dc3u32;
+        K[12] = 0x72be5d74u32; K[13] = 0x80deb1feu32; K[14] = 0x9bdc06a7u32; K[15] = 0xc19bf174u32;
+        K[16] = 0xe49b69c1u32; K[17] = 0xefbe4786u32; K[18] = 0x0fc19dc6u32; K[19] = 0x240ca1ccu32;
+        K[20] = 0x2de92c6fu32; K[21] = 0x4a7484aau32; K[22] = 0x5cb0a9dcu32; K[23] = 0x76f988dau32;
+        K[24] = 0x983e5152u32; K[25] = 0xa831c66du32; K[26] = 0xb00327c8u32; K[27] = 0xbf597fc7u32;
+        K[28] = 0xc6e00bf3u32; K[29] = 0xd5a79147u32; K[30] = 0x06ca6351u32; K[31] = 0x14292967u32;
+        K[32] = 0x27b70a85u32; K[33] = 0x2e1b2138u32; K[34] = 0x4d2c6dfcu32; K[35] = 0x53380d13u32;
+        K[36] = 0x650a7354u32; K[37] = 0x766a0abbu32; K[38] = 0x81c2c92eu32; K[39] = 0x92722c85u32;
+        K[40] = 0xa2bfe8a1u32; K[41] = 0xa81a664bu32; K[42] = 0xc24b8b70u32; K[43] = 0xc76c51a3u32;
+        K[44] = 0xd192e819u32; K[45] = 0xd6990624u32; K[46] = 0xf40e3585u32; K[47] = 0x106aa070u32;
+        K[48] = 0x19a4c116u32; K[49] = 0x1e376c08u32; K[50] = 0x2748774cu32; K[51] = 0x34b0bcb5u32;
+        K[52] = 0x391c0cb3u32; K[53] = 0x4ed8aa4au32; K[54] = 0x5b9cca4fu32; K[55] = 0x682e6ff3u32;
+        K[56] = 0x748f82eeu32; K[57] = 0x78a5636fu32; K[58] = 0x84c87814u32; K[59] = 0x8cc70208u32;
+        K[60] = 0x90befffau32; K[61] = 0xa4506cebu32; K[62] = 0xbef9a3f7u32; K[63] = 0xc67178f2u32;
+
+        // Message schedule W[0..63]
+        var W: uint32[64];
+
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            let j = i * 4u32;
+            W[i] = (block[j]        as uint32 << 24u32)
+                 | (block[j + 1u32] as uint32 << 16u32)
+                 | (block[j + 2u32] as uint32 <<  8u32)
+                 | (block[j + 3u32] as uint32);
+            i = i + 1u32;
+        }
+
+        i = 16u32;
+        while i < 64u32 {
+            W[i] = Sha256LSig1(W[i - 2u32])
+                 + W[i - 7u32]
+                 + Sha256LSig0(W[i - 15u32])
+                 + W[i - 16u32];
+            i = i + 1u32;
+        }
+
+        // Working variables
+        var a: uint32 = ctx.state[0];
+        var b: uint32 = ctx.state[1];
+        var c: uint32 = ctx.state[2];
+        var d: uint32 = ctx.state[3];
+        var e: uint32 = ctx.state[4];
+        var f: uint32 = ctx.state[5];
+        var g: uint32 = ctx.state[6];
+        var h: uint32 = ctx.state[7];
+
+        // 64 rounds
+        i = 0u32;
+        while i < 64u32 {
+            let t1 = h + Sha256USig1(e) + Sha256Ch(e, f, g) + K[i] + W[i];
+            let t2 = Sha256USig0(a) + Sha256Maj(a, b, c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + t1;
+            d = c;
+            c = b;
+            b = a;
+            a = t1 + t2;
+            i = i + 1u32;
+        }
+
+        ctx.state[0] = ctx.state[0] + a;
+        ctx.state[1] = ctx.state[1] + b;
+        ctx.state[2] = ctx.state[2] + c;
+        ctx.state[3] = ctx.state[3] + d;
+        ctx.state[4] = ctx.state[4] + e;
+        ctx.state[5] = ctx.state[5] + f;
+        ctx.state[6] = ctx.state[6] + g;
+        ctx.state[7] = ctx.state[7] + h;
+    }
+
+
+    // Public API
+
+
+    /// Initialises a SHA-256 context — call before Sha256Update
+    pub func Sha256Init(ctx: *Sha256Context) {
+        // Initial hash values — first 32 bits of the fractional parts
+        // of the square roots of the first 8 primes
+        ctx.state[0] = 0x6a09e667u32;
+        ctx.state[1] = 0xbb67ae85u32;
+        ctx.state[2] = 0x3c6ef372u32;
+        ctx.state[3] = 0xa54ff53au32;
+        ctx.state[4] = 0x510e527fu32;
+        ctx.state[5] = 0x9b05688cu32;
+        ctx.state[6] = 0x1f83d9abu32;
+        ctx.state[7] = 0x5be0cd19u32;
+        ctx.count  = 0u64;
+        ctx.bufLen = 0u32;
+    }
+
+    /// Feeds data into the SHA-256 context
+    pub func Sha256Update(ctx: *Sha256Context, data: *const uint8, len: uint) {
+        var remaining: uint = len;
+        var offset:    uint = 0u;
+
+        if ctx.bufLen > 0u32 {
+            let space = 64u32 - ctx.bufLen;
+            let fill  = (remaining as uint32 < space) ? remaining as uint32 : space;
+
+            var i: uint32 = 0u32;
+            while i < fill {
+                ctx.buf[ctx.bufLen + i] = data[offset + i as uint];
+                i = i + 1u32;
+            }
+            ctx.bufLen = ctx.bufLen + fill;
+            offset     = offset + fill as uint;
+            remaining  = remaining - fill as uint;
+
+            if ctx.bufLen == 64u32 {
+                Sha256ProcessBlock(ctx, &ctx.buf[0]);
+                ctx.count  = ctx.count + 512u64;
+                ctx.bufLen = 0u32;
+            }
+        }
+
+        while remaining >= 64u {
+            Sha256ProcessBlock(ctx, &data[offset]);
+            ctx.count = ctx.count + 512u64;
+            offset    = offset + 64u;
+            remaining = remaining - 64u;
+        }
+
+        var i: uint32 = 0u32;
+        while i < remaining as uint32 {
+            ctx.buf[i] = data[offset + i as uint];
+            i = i + 1u32;
+        }
+        ctx.bufLen = remaining as uint32;
+    }
+
+    /// Finalises the SHA-256 digest and writes 32 bytes into digest
+    pub func Sha256Final(ctx: *Sha256Context, digest: *uint8) {
+        let bitLen = ctx.count + ctx.bufLen as uint64 * 8u64;
+
+        ctx.buf[ctx.bufLen] = 0x80u8;
+        ctx.bufLen = ctx.bufLen + 1u32;
+
+        if ctx.bufLen > 56u32 {
+            while ctx.bufLen < 64u32 {
+                ctx.buf[ctx.bufLen] = 0x00u8;
+                ctx.bufLen = ctx.bufLen + 1u32;
+            }
+            Sha256ProcessBlock(ctx, &ctx.buf[0]);
+            ctx.bufLen = 0u32;
+        }
+
+        while ctx.bufLen < 56u32 {
+            ctx.buf[ctx.bufLen] = 0x00u8;
+            ctx.bufLen = ctx.bufLen + 1u32;
+        }
+
+        Sha256StoreU64Be(&ctx.buf[56], bitLen);
+        Sha256ProcessBlock(ctx, &ctx.buf[0]);
+
+        Sha256StoreU32Be(&digest[0],  ctx.state[0]);
+        Sha256StoreU32Be(&digest[4],  ctx.state[1]);
+        Sha256StoreU32Be(&digest[8],  ctx.state[2]);
+        Sha256StoreU32Be(&digest[12], ctx.state[3]);
+        Sha256StoreU32Be(&digest[16], ctx.state[4]);
+        Sha256StoreU32Be(&digest[20], ctx.state[5]);
+        Sha256StoreU32Be(&digest[24], ctx.state[6]);
+        Sha256StoreU32Be(&digest[28], ctx.state[7]);
+    }
+
+    /// One-shot SHA-256 — hashes data of len bytes and writes 32 bytes into digest
+    pub func Sha256Hash(data: *const uint8, len: uint, digest: *uint8) {
+        var ctx: Sha256Context;
+        Sha256Init(&ctx);
+        Sha256Update(&ctx, data, len);
+        Sha256Final(&ctx, digest);
+    }
+}

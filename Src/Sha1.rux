@@ -1,0 +1,269 @@
+/*
+    Crypto — SHA-1 (FIPS 180-4)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
+module Crypto {
+
+
+    // Constants — initial hash values
+
+
+    pub const SHA1_H0: uint32 = 0x67452301u32;
+    pub const SHA1_H1: uint32 = 0xEFCDAB89u32;
+    pub const SHA1_H2: uint32 = 0x98BADCFEu32;
+    pub const SHA1_H3: uint32 = 0x10325476u32;
+    pub const SHA1_H4: uint32 = 0xC3D2E1F0u32;
+
+
+    // Constants — round constants
+
+
+    pub const SHA1_K0: uint32 = 0x5A827999u32;
+    pub const SHA1_K1: uint32 = 0x6ED9EBA1u32;
+    pub const SHA1_K2: uint32 = 0x8F1BBCDCu32;
+    pub const SHA1_K3: uint32 = 0xCA62C1D6u32;
+
+
+    // Constants — digest and block sizes
+
+
+    pub const SHA1_DIGEST_SIZE: uint32 = 20u32;
+    pub const SHA1_BLOCK_SIZE:  uint32 = 64u32;
+
+
+    // Structures
+
+
+    pub struct Sha1Context {
+        pub state:  uint32[5];
+        pub count:  uint64;
+        pub buf:    uint8[64];
+        pub bufLen: uint32;
+    }
+
+
+    // Internal helpers
+
+
+    func Rotl32(x: uint32, n: uint32) -> uint32 {
+        return (x << n) | (x >> (32u32 - n));
+    }
+
+    func Sha1Ch(b: uint32, c: uint32, d: uint32) -> uint32 {
+        return (b & c) | (~b & d);
+    }
+
+    func Sha1Parity(b: uint32, c: uint32, d: uint32) -> uint32 {
+        return b ^ c ^ d;
+    }
+
+    func Sha1Maj(b: uint32, c: uint32, d: uint32) -> uint32 {
+        return (b & c) | (b & d) | (c & d);
+    }
+
+    func Sha1StoreU32Be(out: *uint8, v: uint32) {
+        out[0] = ((v >> 24u32) & 0xFFu32) as uint8;
+        out[1] = ((v >> 16u32) & 0xFFu32) as uint8;
+        out[2] = ((v >>  8u32) & 0xFFu32) as uint8;
+        out[3] = ( v           & 0xFFu32) as uint8;
+    }
+
+    func Sha1StoreU64Be(out: *uint8, v: uint64) {
+        out[0] = ((v >> 56u64) & 0xFFu64) as uint8;
+        out[1] = ((v >> 48u64) & 0xFFu64) as uint8;
+        out[2] = ((v >> 40u64) & 0xFFu64) as uint8;
+        out[3] = ((v >> 32u64) & 0xFFu64) as uint8;
+        out[4] = ((v >> 24u64) & 0xFFu64) as uint8;
+        out[5] = ((v >> 16u64) & 0xFFu64) as uint8;
+        out[6] = ((v >>  8u64) & 0xFFu64) as uint8;
+        out[7] = ( v           & 0xFFu64) as uint8;
+    }
+
+    func Sha1ProcessBlock(ctx: *Sha1Context, block: *const uint8) {
+        // Build message schedule W[0..79]
+        var W: uint32[80];
+
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            let j = i * 4u32;
+            W[i] = (block[j]           as uint32 << 24u32)
+                 | (block[j + 1u32]    as uint32 << 16u32)
+                 | (block[j + 2u32]    as uint32 <<  8u32)
+                 | (block[j + 3u32]    as uint32);
+            i = i + 1u32;
+        }
+
+        i = 16u32;
+        while i < 80u32 {
+            W[i] = Rotl32(W[i - 3u32] ^ W[i - 8u32] ^ W[i - 14u32] ^ W[i - 16u32], 1u32);
+            i = i + 1u32;
+        }
+
+        // Initialise working variables
+        var a: uint32 = ctx.state[0];
+        var b: uint32 = ctx.state[1];
+        var c: uint32 = ctx.state[2];
+        var d: uint32 = ctx.state[3];
+        var e: uint32 = ctx.state[4];
+
+        // Rounds 0–19
+        i = 0u32;
+        while i < 20u32 {
+            let temp = Rotl32(a, 5u32) + Sha1Ch(b, c, d) + e + SHA1_K0 + W[i];
+            e = d;
+            d = c;
+            c = Rotl32(b, 30u32);
+            b = a;
+            a = temp;
+            i = i + 1u32;
+        }
+
+        // Rounds 20–39
+        i = 20u32;
+        while i < 40u32 {
+            let temp = Rotl32(a, 5u32) + Sha1Parity(b, c, d) + e + SHA1_K1 + W[i];
+            e = d;
+            d = c;
+            c = Rotl32(b, 30u32);
+            b = a;
+            a = temp;
+            i = i + 1u32;
+        }
+
+        // Rounds 40–59
+        i = 40u32;
+        while i < 60u32 {
+            let temp = Rotl32(a, 5u32) + Sha1Maj(b, c, d) + e + SHA1_K2 + W[i];
+            e = d;
+            d = c;
+            c = Rotl32(b, 30u32);
+            b = a;
+            a = temp;
+            i = i + 1u32;
+        }
+
+        // Rounds 60–79
+        i = 60u32;
+        while i < 80u32 {
+            let temp = Rotl32(a, 5u32) + Sha1Parity(b, c, d) + e + SHA1_K3 + W[i];
+            e = d;
+            d = c;
+            c = Rotl32(b, 30u32);
+            b = a;
+            a = temp;
+            i = i + 1u32;
+        }
+
+        // Add compressed chunk back into state
+        ctx.state[0] = ctx.state[0] + a;
+        ctx.state[1] = ctx.state[1] + b;
+        ctx.state[2] = ctx.state[2] + c;
+        ctx.state[3] = ctx.state[3] + d;
+        ctx.state[4] = ctx.state[4] + e;
+    }
+
+
+    // Public API
+
+
+    /// Initialises a SHA-1 context — call before Sha1Update
+    pub func Sha1Init(ctx: *Sha1Context) {
+        ctx.state[0] = SHA1_H0;
+        ctx.state[1] = SHA1_H1;
+        ctx.state[2] = SHA1_H2;
+        ctx.state[3] = SHA1_H3;
+        ctx.state[4] = SHA1_H4;
+        ctx.count  = 0u64;
+        ctx.bufLen = 0u32;
+    }
+
+    /// Feeds data into the SHA-1 context
+    pub func Sha1Update(ctx: *Sha1Context, data: *const uint8, len: uint) {
+        var remaining: uint = len;
+        var offset:    uint = 0u;
+
+        // Fill and flush any partial block already in the buffer
+        if ctx.bufLen > 0u32 {
+            let space = 64u32 - ctx.bufLen;
+            let fill  = (remaining as uint32 < space) ? remaining as uint32 : space;
+
+            var i: uint32 = 0u32;
+            while i < fill {
+                ctx.buf[ctx.bufLen + i] = data[offset + i as uint];
+                i = i + 1u32;
+            }
+            ctx.bufLen = ctx.bufLen + fill;
+            offset    = offset + fill as uint;
+            remaining = remaining - fill as uint;
+
+            if ctx.bufLen == 64u32 {
+                Sha1ProcessBlock(ctx, &ctx.buf[0]);
+                ctx.count  = ctx.count + 512u64;
+                ctx.bufLen = 0u32;
+            }
+        }
+
+        // Process full blocks directly from input
+        while remaining >= 64u {
+            Sha1ProcessBlock(ctx, &data[offset]);
+            ctx.count = ctx.count + 512u64;
+            offset    = offset + 64u;
+            remaining = remaining - 64u;
+        }
+
+        // Buffer any leftover bytes
+        var i: uint32 = 0u32;
+        while i < remaining as uint32 {
+            ctx.buf[i] = data[offset + i as uint];
+            i = i + 1u32;
+        }
+        ctx.bufLen = remaining as uint32;
+    }
+
+    /// Finalises the SHA-1 digest and writes 20 bytes into digest
+    pub func Sha1Final(ctx: *Sha1Context, digest: *uint8) {
+        // Total message bit-length
+        let bitLen = ctx.count + ctx.bufLen as uint64 * 8u64;
+
+        // Append 0x80 padding byte
+        ctx.buf[ctx.bufLen] = 0x80u8;
+        ctx.bufLen = ctx.bufLen + 1u32;
+
+        // Pad to 56 bytes; if we have overflowed the block, flush and start a new one
+        if ctx.bufLen > 56u32 {
+            while ctx.bufLen < 64u32 {
+                ctx.buf[ctx.bufLen] = 0x00u8;
+                ctx.bufLen = ctx.bufLen + 1u32;
+            }
+            Sha1ProcessBlock(ctx, &ctx.buf[0]);
+            ctx.bufLen = 0u32;
+        }
+
+        while ctx.bufLen < 56u32 {
+            ctx.buf[ctx.bufLen] = 0x00u8;
+            ctx.bufLen = ctx.bufLen + 1u32;
+        }
+
+        // Append 64-bit big-endian bit length
+        Sha1StoreU64Be(&ctx.buf[56], bitLen);
+        Sha1ProcessBlock(ctx, &ctx.buf[0]);
+
+        // Write digest in big-endian order
+        Sha1StoreU32Be(&digest[0],  ctx.state[0]);
+        Sha1StoreU32Be(&digest[4],  ctx.state[1]);
+        Sha1StoreU32Be(&digest[8],  ctx.state[2]);
+        Sha1StoreU32Be(&digest[12], ctx.state[3]);
+        Sha1StoreU32Be(&digest[16], ctx.state[4]);
+    }
+
+    /// One-shot SHA-1 — hashes data of len bytes and writes 20 bytes into digest
+    pub func Sha1Hash(data: *const uint8, len: uint, digest: *uint8) {
+        var ctx: Sha1Context;
+        Sha1Init(&ctx);
+        Sha1Update(&ctx, data, len);
+        Sha1Final(&ctx, digest);
+    }
+}

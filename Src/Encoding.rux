@@ -1,0 +1,117 @@
+module Crypto {
+
+    func HexChar(val: uint8) -> uint8 {
+        if val < 10u8 { return 0x30u8 + val; }
+        return 0x57u8 + val;
+    }
+
+    func UnHexChar(c: uint8) -> uint8 {
+        if c >= 0x30u8 && c <= 0x39u8 { return c - 0x30u8; }
+        if c >= 0x41u8 && c <= 0x46u8 { return c - 0x37u8; }
+        if c >= 0x61u8 && c <= 0x66u8 { return c - 0x57u8; }
+        return 0u8;
+    }
+
+    /// Encodes binary data to lowercase hex string
+    pub func HexEncode(input: *const uint8, inputLen: uint, output: *uint8) {
+        var i: uint = 0u;
+        while i < inputLen {
+            let b = input[i];
+            output[i * 2u]      = HexChar((b >> 4u8) & 0x0Fu8);
+            output[i * 2u + 1u] = HexChar(b & 0x0Fu8);
+            i = i + 1u;
+        }
+    }
+
+    /// Decodes hex string back to binary (outputLen must be at least inputLen/2)
+    pub func HexDecode(input: *const uint8, inputLen: uint, output: *uint8) -> uint {
+        if inputLen % 2u != 0u { return 0u; }
+        let outLen = inputLen / 2u;
+        var i: uint = 0u;
+        while i < outLen {
+            output[i] = (UnHexChar(input[i * 2u]) << 4u8) | UnHexChar(input[i * 2u + 1u]);
+            i = i + 1u;
+        }
+        return outLen;
+    }
+
+    func Base64Char(val: uint8) -> uint8 {
+        var table: uint8[64];
+        table[0]  = 0x41u8; table[1]  = 0x42u8; table[2]  = 0x43u8; table[3]  = 0x44u8;
+        table[4]  = 0x45u8; table[5]  = 0x46u8; table[6]  = 0x47u8; table[7]  = 0x48u8;
+        table[8]  = 0x49u8; table[9]  = 0x4Au8; table[10] = 0x4Bu8; table[11] = 0x4Cu8;
+        table[12] = 0x4Du8; table[13] = 0x4Eu8; table[14] = 0x4Fu8; table[15] = 0x50u8;
+        table[16] = 0x51u8; table[17] = 0x52u8; table[18] = 0x53u8; table[19] = 0x54u8;
+        table[20] = 0x55u8; table[21] = 0x56u8; table[22] = 0x57u8; table[23] = 0x58u8;
+        table[24] = 0x59u8; table[25] = 0x5Au8; table[26] = 0x61u8; table[27] = 0x62u8;
+        table[28] = 0x63u8; table[29] = 0x64u8; table[30] = 0x65u8; table[31] = 0x66u8;
+        table[32] = 0x67u8; table[33] = 0x68u8; table[34] = 0x69u8; table[35] = 0x6Au8;
+        table[36] = 0x6Bu8; table[37] = 0x6Cu8; table[38] = 0x6Du8; table[39] = 0x6Eu8;
+        table[40] = 0x6Fu8; table[41] = 0x70u8; table[42] = 0x71u8; table[43] = 0x72u8;
+        table[44] = 0x73u8; table[45] = 0x74u8; table[46] = 0x75u8; table[47] = 0x76u8;
+        table[48] = 0x77u8; table[49] = 0x78u8; table[50] = 0x79u8; table[51] = 0x7Au8;
+        table[52] = 0x30u8; table[53] = 0x31u8; table[54] = 0x32u8; table[55] = 0x33u8;
+        table[56] = 0x34u8; table[57] = 0x35u8; table[58] = 0x36u8; table[59] = 0x37u8;
+        table[60] = 0x38u8; table[61] = 0x39u8; table[62] = 0x2Bu8; table[63] = 0x2Fu8;
+        return table[val];
+    }
+
+    func UnBase64Char(c: uint8) -> uint8 {
+        if c >= 0x41u8 && c <= 0x5Au8 { return c - 0x41u8; }
+        if c >= 0x61u8 && c <= 0x7Au8 { return c - 0x47u8; }
+        if c >= 0x30u8 && c <= 0x39u8 { return c + 0x04u8; }
+        if c == 0x2Bu8 { return 0x3Eu8; }
+        if c == 0x2Fu8 { return 0x3Fu8; }
+        return 0u8;
+    }
+
+    /// Encodes binary data to Base64 string (no padding)
+    pub func Base64Encode(input: *const uint8, inputLen: uint, output: *uint8) -> uint {
+        var i: uint = 0u;
+        var o: uint = 0u;
+        while i + 3u <= inputLen {
+            let b0 = input[i];
+            let b1 = input[i + 1u];
+            let b2 = input[i + 2u];
+            output[o]      = Base64Char((b0 >> 2u8) & 0x3Fu8);
+            output[o + 1u] = Base64Char(((b0 << 4u8) & 0x30u8) | ((b1 >> 4u8) & 0x0Fu8));
+            output[o + 2u] = Base64Char(((b1 << 2u8) & 0x3Cu8) | ((b2 >> 6u8) & 0x03u8));
+            output[o + 3u] = Base64Char(b2 & 0x3Fu8);
+            i = i + 3u;
+            o = o + 4u;
+        }
+        let rem = inputLen - i;
+        if rem == 1u {
+            let b0 = input[i];
+            output[o]      = Base64Char((b0 >> 2u8) & 0x3Fu8);
+            output[o + 1u] = Base64Char((b0 << 4u8) & 0x30u8);
+            o = o + 2u;
+        } else if rem == 2u {
+            let b0 = input[i];
+            let b1 = input[i + 1u];
+            output[o]      = Base64Char((b0 >> 2u8) & 0x3Fu8);
+            output[o + 1u] = Base64Char(((b0 << 4u8) & 0x30u8) | ((b1 >> 4u8) & 0x0Fu8));
+            output[o + 2u] = Base64Char((b1 << 2u8) & 0x3Cu8);
+            o = o + 3u;
+        }
+        return o;
+    }
+
+    /// Decodes Base64 string back to binary
+    pub func Base64Decode(input: *const uint8, inputLen: uint, output: *uint8) -> uint {
+        var i: uint = 0u;
+        var o: uint = 0u;
+        while i + 4u <= inputLen {
+            let c0 = UnBase64Char(input[i]);
+            let c1 = UnBase64Char(input[i + 1u]);
+            let c2 = UnBase64Char(input[i + 2u]);
+            let c3 = UnBase64Char(input[i + 3u]);
+            output[o]     = (c0 << 2u8) | ((c1 >> 4u8) & 0x03u8);
+            output[o + 1u] = ((c1 << 4u8) & 0xF0u8) | ((c2 >> 2u8) & 0x0Fu8);
+            output[o + 2u] = ((c2 << 6u8) & 0xC0u8) | c3;
+            i = i + 4u;
+            o = o + 3u;
+        }
+        return o;
+    }
+}

@@ -1,0 +1,259 @@
+module Crypto {
+
+    pub const SHA512_DIGEST_SIZE: uint32 = 64u32;
+    pub const SHA512_BLOCK_SIZE:  uint32 = 128u32;
+
+    pub struct Sha512Context {
+        pub state:  uint64[8];
+        pub countLo: uint64;
+        pub countHi: uint64;
+        pub buf:    uint8[128];
+        pub bufLen: uint32;
+    }
+
+    func Rotr64(x: uint64, n: uint32) -> uint64 {
+        return (x >> n) | (x << (64u32 - n));
+    }
+
+    func Sha512Ch(x: uint64, y: uint64, z: uint64) -> uint64 {
+        return (x & y) ^ (~x & z);
+    }
+
+    func Sha512Maj(x: uint64, y: uint64, z: uint64) -> uint64 {
+        return (x & y) ^ (x & z) ^ (y & z);
+    }
+
+    func Sha512USig0(x: uint64) -> uint64 {
+        return Rotr64(x, 28u32) ^ Rotr64(x, 34u32) ^ Rotr64(x, 39u32);
+    }
+
+    func Sha512USig1(x: uint64) -> uint64 {
+        return Rotr64(x, 14u32) ^ Rotr64(x, 18u32) ^ Rotr64(x, 41u32);
+    }
+
+    func Sha512LSig0(x: uint64) -> uint64 {
+        return Rotr64(x, 1u32) ^ Rotr64(x, 8u32) ^ (x >> 7u64);
+    }
+
+    func Sha512LSig1(x: uint64) -> uint64 {
+        return Rotr64(x, 19u32) ^ Rotr64(x, 61u32) ^ (x >> 6u64);
+    }
+
+    func Sha512StoreU64Be(out: *uint8, v: uint64) {
+        out[0] = ((v >> 56u64) & 0xFFu64) as uint8;
+        out[1] = ((v >> 48u64) & 0xFFu64) as uint8;
+        out[2] = ((v >> 40u64) & 0xFFu64) as uint8;
+        out[3] = ((v >> 32u64) & 0xFFu64) as uint8;
+        out[4] = ((v >> 24u64) & 0xFFu64) as uint8;
+        out[5] = ((v >> 16u64) & 0xFFu64) as uint8;
+        out[6] = ((v >>  8u64) & 0xFFu64) as uint8;
+        out[7] = ( v           & 0xFFu64) as uint8;
+    }
+
+    func Sha512AddCount(ctx: *Sha512Context, addedBits: uint64) {
+        var oldLo = ctx.countLo;
+        ctx.countLo = ctx.countLo + addedBits;
+        if ctx.countLo < oldLo {
+            ctx.countHi = ctx.countHi + 1u64;
+        }
+    }
+
+    func Sha512ProcessBlock(ctx: *Sha512Context, block: *const uint8) {
+        var K: uint64[80];
+        K[0]  = 0x428a2f98d728ae22u64; K[1]  = 0x7137449123ef65cdu64;
+        K[2]  = 0xb5c0fbcfec4d3b2fu64; K[3]  = 0xe9b5dba58189dbbcu64;
+        K[4]  = 0x3956c25bf348b538u64; K[5]  = 0x59f111f1b605d019u64;
+        K[6]  = 0x923f82a4af194f9bu64; K[7]  = 0xab1c5ed5da6d8118u64;
+        K[8]  = 0xd807aa98a3030242u64; K[9]  = 0x12835b0145706fbeu64;
+        K[10] = 0x243185be4ee4b28cu64; K[11] = 0x550c7dc3d5ffb4e2u64;
+        K[12] = 0x72be5d74f27b896fu64; K[13] = 0x80deb1fe3b1696b1u64;
+        K[14] = 0x9bdc06a725c71235u64; K[15] = 0xc19bf174cf692694u64;
+        K[16] = 0xe49b69c19ef14ad2u64; K[17] = 0xefbe4786384f25e3u64;
+        K[18] = 0x0fc19dc68b8cd5b5u64; K[19] = 0x240ca1cc77ac9c65u64;
+        K[20] = 0x2de92c6f592b0275u64; K[21] = 0x4a7484aa6ea6e483u64;
+        K[22] = 0x5cb0a9dcbd41fbd4u64; K[23] = 0x76f988da831153b5u64;
+        K[24] = 0x983e5152ee66dfabu64; K[25] = 0xa831c66d2db43210u64;
+        K[26] = 0xb00327c898fb213fu64; K[27] = 0xbf597fc7beef0ee4u64;
+        K[28] = 0xc6e00bf33da88fc2u64; K[29] = 0xd5a79147930aa725u64;
+        K[30] = 0x06ca6351e003826fu64; K[31] = 0x142929670a0e6e70u64;
+        K[32] = 0x27b70a8546d22ffcu64; K[33] = 0x2e1b21385c26c926u64;
+        K[34] = 0x4d2c6dfc5ac42aedu64; K[35] = 0x53380d139d95b3dfu64;
+        K[36] = 0x650a73548baf63deu64; K[37] = 0x766a0abb3c77b2a8u64;
+        K[38] = 0x81c2c92e47edaee6u64; K[39] = 0x92722c851482353bu64;
+        K[40] = 0xa2bfe8a14cf10364u64; K[41] = 0xa81a664bbc423001u64;
+        K[42] = 0xc24b8b70d0f89791u64; K[43] = 0xc76c51a30654be30u64;
+        K[44] = 0xd192e819d6ef5218u64; K[45] = 0xd69906245565a910u64;
+        K[46] = 0xf40e35855771202au64; K[47] = 0x106aa07032bbd1b8u64;
+        K[48] = 0x19a4c116b8d2d0c8u64; K[49] = 0x1e376c085141ab53u64;
+        K[50] = 0x2748774cdf8eeb99u64; K[51] = 0x34b0bcb5e19b48a8u64;
+        K[52] = 0x391c0cb3c5c95a63u64; K[53] = 0x4ed8aa4ae3418acbu64;
+        K[54] = 0x5b9cca4f7763e373u64; K[55] = 0x682e6ff3d6b2b8a3u64;
+        K[56] = 0x748f82ee5defb2fcu64; K[57] = 0x78a5636f43172f60u64;
+        K[58] = 0x84c87814a1f0ab72u64; K[59] = 0x8cc702081a6439ecu64;
+        K[60] = 0x90befffa23631e28u64; K[61] = 0xa4506cebde82bde9u64;
+        K[62] = 0xbef9a3f7b2c67915u64; K[63] = 0xc67178f2e372532bu64;
+        K[64] = 0xca273eceea26619cu64; K[65] = 0xd186b8c721c0c207u64;
+        K[66] = 0xeada7dd6cde0eb1eu64; K[67] = 0xf57d4f7fee6ed178u64;
+        K[68] = 0x06f067aa72176fbau64; K[69] = 0x0a637dc5a2c898a6u64;
+        K[70] = 0x113f9804bef90daeu64; K[71] = 0x1b710b35131c471bu64;
+        K[72] = 0x28db77f523047d84u64; K[73] = 0x32caab7b40c72493u64;
+        K[74] = 0x3c9ebe0a15c9bebcu64; K[75] = 0x431d67c49c100d4cu64;
+        K[76] = 0x4cc5d4becb3e42b6u64; K[77] = 0x597f299cfc657e2au64;
+        K[78] = 0x5fcb6fab3ad6faecu64; K[79] = 0x6c44198c4a475817u64;
+
+        var W: uint64[80];
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            let j = i * 8u32;
+            W[i] = (block[j]        as uint64 << 56u64)
+                 | (block[j + 1u32] as uint64 << 48u64)
+                 | (block[j + 2u32] as uint64 << 40u64)
+                 | (block[j + 3u32] as uint64 << 32u64)
+                 | (block[j + 4u32] as uint64 << 24u64)
+                 | (block[j + 5u32] as uint64 << 16u64)
+                 | (block[j + 6u32] as uint64 <<  8u64)
+                 | (block[j + 7u32] as uint64);
+            i = i + 1u32;
+        }
+
+        i = 16u32;
+        while i < 80u32 {
+            W[i] = Sha512LSig1(W[i - 2u32])
+                 + W[i - 7u32]
+                 + Sha512LSig0(W[i - 15u32])
+                 + W[i - 16u32];
+            i = i + 1u32;
+        }
+
+        var a: uint64 = ctx.state[0];
+        var b: uint64 = ctx.state[1];
+        var c: uint64 = ctx.state[2];
+        var d: uint64 = ctx.state[3];
+        var e: uint64 = ctx.state[4];
+        var f: uint64 = ctx.state[5];
+        var g: uint64 = ctx.state[6];
+        var h: uint64 = ctx.state[7];
+
+        i = 0u32;
+        while i < 80u32 {
+            let t1 = h + Sha512USig1(e) + Sha512Ch(e, f, g) + K[i] + W[i];
+            let t2 = Sha512USig0(a) + Sha512Maj(a, b, c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + t1;
+            d = c;
+            c = b;
+            b = a;
+            a = t1 + t2;
+            i = i + 1u32;
+        }
+
+        ctx.state[0] = ctx.state[0] + a;
+        ctx.state[1] = ctx.state[1] + b;
+        ctx.state[2] = ctx.state[2] + c;
+        ctx.state[3] = ctx.state[3] + d;
+        ctx.state[4] = ctx.state[4] + e;
+        ctx.state[5] = ctx.state[5] + f;
+        ctx.state[6] = ctx.state[6] + g;
+        ctx.state[7] = ctx.state[7] + h;
+    }
+
+    pub func Sha512Init(ctx: *Sha512Context) {
+        ctx.state[0] = 0x6a09e667f3bcc908u64;
+        ctx.state[1] = 0xbb67ae8584caa73bu64;
+        ctx.state[2] = 0x3c6ef372fe94f82bu64;
+        ctx.state[3] = 0xa54ff53a5f1d36f1u64;
+        ctx.state[4] = 0x510e527fade682d1u64;
+        ctx.state[5] = 0x9b05688c2b3e6c1fu64;
+        ctx.state[6] = 0x1f83d9abfb41bd6bu64;
+        ctx.state[7] = 0x5be0cd19137e2179u64;
+        ctx.countLo = 0u64;
+        ctx.countHi = 0u64;
+        ctx.bufLen  = 0u32;
+    }
+
+    pub func Sha512Update(ctx: *Sha512Context, data: *const uint8, len: uint) {
+        var remaining: uint = len;
+        var offset:    uint = 0u;
+
+        if ctx.bufLen > 0u32 {
+            let space = 128u32 - ctx.bufLen;
+            let fill  = (remaining as uint32 < space) ? remaining as uint32 : space;
+
+            var i: uint32 = 0u32;
+            while i < fill {
+                ctx.buf[ctx.bufLen + i] = data[offset + i as uint];
+                i = i + 1u32;
+            }
+            ctx.bufLen = ctx.bufLen + fill;
+            offset     = offset + fill as uint;
+            remaining  = remaining - fill as uint;
+
+            if ctx.bufLen == 128u32 {
+                Sha512ProcessBlock(ctx, &ctx.buf[0]);
+                Sha512AddCount(ctx, 1024u64);
+                ctx.bufLen = 0u32;
+            }
+        }
+
+        while remaining >= 128u {
+            Sha512ProcessBlock(ctx, &data[offset]);
+            Sha512AddCount(ctx, 1024u64);
+            offset    = offset + 128u;
+            remaining = remaining - 128u;
+        }
+
+        var i: uint32 = 0u32;
+        while i < remaining as uint32 {
+            ctx.buf[i] = data[offset + i as uint];
+            i = i + 1u32;
+        }
+        ctx.bufLen = remaining as uint32;
+    }
+
+    pub func Sha512Final(ctx: *Sha512Context, digest: *uint8) {
+        var bitLenLo = ctx.countLo + ctx.bufLen as uint64 * 8u64;
+        var bitLenHi = ctx.countHi;
+        if bitLenLo < ctx.countLo {
+            bitLenHi = bitLenHi + 1u64;
+        }
+
+        ctx.buf[ctx.bufLen] = 0x80u8;
+        ctx.bufLen = ctx.bufLen + 1u32;
+
+        if ctx.bufLen > 112u32 {
+            while ctx.bufLen < 128u32 {
+                ctx.buf[ctx.bufLen] = 0x00u8;
+                ctx.bufLen = ctx.bufLen + 1u32;
+            }
+            Sha512ProcessBlock(ctx, &ctx.buf[0]);
+            ctx.bufLen = 0u32;
+        }
+
+        while ctx.bufLen < 112u32 {
+            ctx.buf[ctx.bufLen] = 0x00u8;
+            ctx.bufLen = ctx.bufLen + 1u32;
+        }
+
+        Sha512StoreU64Be(&ctx.buf[112], bitLenHi);
+        Sha512StoreU64Be(&ctx.buf[120], bitLenLo);
+        Sha512ProcessBlock(ctx, &ctx.buf[0]);
+
+        Sha512StoreU64Be(&digest[0],  ctx.state[0]);
+        Sha512StoreU64Be(&digest[8],  ctx.state[1]);
+        Sha512StoreU64Be(&digest[16], ctx.state[2]);
+        Sha512StoreU64Be(&digest[24], ctx.state[3]);
+        Sha512StoreU64Be(&digest[32], ctx.state[4]);
+        Sha512StoreU64Be(&digest[40], ctx.state[5]);
+        Sha512StoreU64Be(&digest[48], ctx.state[6]);
+        Sha512StoreU64Be(&digest[56], ctx.state[7]);
+    }
+
+    pub func Sha512Hash(data: *const uint8, len: uint, digest: *uint8) {
+        var ctx: Sha512Context;
+        Sha512Init(&ctx);
+        Sha512Update(&ctx, data, len);
+        Sha512Final(&ctx, digest);
+    }
+}

@@ -1,0 +1,279 @@
+module Crypto {
+
+    pub const POLY1305_TAG_SIZE: uint32 = 16u32;
+    pub const POLY1305_KEY_SIZE: uint32 = 32u32;
+
+    pub struct Poly1305Context {
+        pub r:  uint32[5];
+        pub s:  uint32[4];
+        pub acc: uint32[5];
+        pub buf:   uint8[16];
+        pub bufLen: uint32;
+    }
+
+    func Poly1305LimbMul(a: uint32, b: uint32, carry: uint64) -> uint64 {
+        return a as uint64 * b as uint64 + carry;
+    }
+
+    func Poly1305Clamp(r: *uint32) {
+        r[0] = r[0] & 0x0fffffffu32;
+        r[1] = r[1] & 0x0ffffffcu32;
+        r[2] = r[2] & 0x0ffffffcu32;
+        r[3] = r[3] & 0x0ffffffcu32;
+        r[4] = r[4] & 0x0ffffffcu32;
+    }
+
+    pub func Poly1305Init(ctx: *Poly1305Context, key: *const uint8) {
+        // r = key[0..15] clamped
+        ctx.r[0] = (key[0] as uint32) | (key[1] as uint32 << 8u32) | (key[2] as uint32 << 16u32) | ((key[3] as uint32 & 0x03u32) << 24u32);
+        ctx.r[1] = ((key[3] as uint32 >> 2u32) & 0x0Fu32) | (key[4] as uint32 << 6u32) | (key[5] as uint32 << 14u32) | ((key[6] as uint32 & 0x0Fu32) << 22u32);
+        ctx.r[2] = ((key[6] as uint32 >> 4u32) & 0x03u32) | (key[7] as uint32 << 4u32) | (key[8] as uint32 << 12u32) | ((key[9] as uint32 & 0x3Fu32) << 20u32);
+        ctx.r[3] = ((key[9] as uint32 >> 6u32) & 0x07u32) | (key[10] as uint32 << 2u32) | (key[11] as uint32 << 10u32) | (key[12] as uint32 << 18u32);
+        ctx.r[4] = ((key[13] as uint32) | (key[14] as uint32 << 8u32) | (key[15] as uint32 << 16u32)) >> 2u32 & 0x0fffffffu32;
+        Poly1305Clamp(&ctx.r[0]);
+
+        // s = key[16..31] as 4 32-bit LE words
+        ctx.s[0] = key[16] as uint32 | key[17] as uint32 << 8u32 | key[18] as uint32 << 16u32 | key[19] as uint32 << 24u32;
+        ctx.s[1] = key[20] as uint32 | key[21] as uint32 << 8u32 | key[22] as uint32 << 16u32 | key[23] as uint32 << 24u32;
+        ctx.s[2] = key[24] as uint32 | key[25] as uint32 << 8u32 | key[26] as uint32 << 16u32 | key[27] as uint32 << 24u32;
+        ctx.s[3] = key[28] as uint32 | key[29] as uint32 << 8u32 | key[30] as uint32 << 16u32 | key[31] as uint32 << 24u32;
+
+        ctx.acc[0] = 0u32;
+        ctx.acc[1] = 0u32;
+        ctx.acc[2] = 0u32;
+        ctx.acc[3] = 0u32;
+        ctx.acc[4] = 0u32;
+        ctx.bufLen = 0u32;
+    }
+
+    pub func Poly1305Update(ctx: *Poly1305Context, data: *const uint8, len: uint) {
+        var remaining: uint = len;
+        var offset: uint = 0u;
+
+        while remaining > 0u {
+            let space = 16u32 - ctx.bufLen;
+            let fill = (remaining as uint32 < space) ? remaining as uint32 : space;
+
+            var i: uint32 = 0u32;
+            while i < fill {
+                ctx.buf[ctx.bufLen + i] = data[offset + i as uint];
+                i = i + 1u32;
+            }
+            ctx.bufLen = ctx.bufLen + fill;
+            offset    = offset + fill as uint;
+            remaining = remaining - fill as uint;
+
+            if ctx.bufLen == 16u32 {
+                var n: uint32[5];
+                n[0] = (ctx.buf[0] as uint32) | (ctx.buf[1] as uint32 << 8u32) | (ctx.buf[2] as uint32 << 16u32) | ((ctx.buf[3] as uint32 & 0x03u32) << 24u32);
+                n[1] = ((ctx.buf[3] as uint32 >> 2u32) & 0x0Fu32) | (ctx.buf[4] as uint32 << 6u32) | (ctx.buf[5] as uint32 << 14u32) | ((ctx.buf[6] as uint32 & 0x0Fu32) << 22u32);
+                n[2] = ((ctx.buf[6] as uint32 >> 4u32) & 0x03u32) | (ctx.buf[7] as uint32 << 4u32) | (ctx.buf[8] as uint32 << 12u32) | ((ctx.buf[9] as uint32 & 0x3Fu32) << 20u32);
+                n[3] = ((ctx.buf[9] as uint32 >> 6u32) & 0x07u32) | (ctx.buf[10] as uint32 << 2u32) | (ctx.buf[11] as uint32 << 10u32) | (ctx.buf[12] as uint32 << 18u32);
+                n[4] = ((ctx.buf[13] as uint32) | (ctx.buf[14] as uint32 << 8u32) | (ctx.buf[15] as uint32 << 16u32)) >> 2u32 & 0x0fffffffu32;
+
+                n[0] = n[0] + ctx.acc[0];
+                var carry: uint64 = n[0] as uint64 >> 26u64;
+                n[0] = n[0] & 0x03ffffffu32;
+                n[1] = n[1] + carry as uint32;
+                carry = n[1] as uint64 >> 26u64;
+                n[1] = n[1] & 0x03ffffffu32;
+                n[2] = n[2] + carry as uint32;
+                carry = n[2] as uint64 >> 26u64;
+                n[2] = n[2] & 0x03ffffffu32;
+                n[3] = n[3] + carry as uint32;
+                carry = n[3] as uint64 >> 26u64;
+                n[3] = n[3] & 0x03ffffffu32;
+                n[4] = n[4] + carry as uint32;
+
+                var hr: uint64[5];
+                hr[0] = 0u64; hr[1] = 0u64; hr[2] = 0u64; hr[3] = 0u64; hr[4] = 0u64;
+
+                var ii: uint32 = 0u32;
+                while ii < 5u32 {
+                    var jj: uint32 = 0u32;
+                    while jj < 5u32 - ii {
+                        let prod = n[ii] as uint64 * ctx.r[jj] as uint64;
+                        hr[ii + jj] = hr[ii + jj] + prod;
+                        jj = jj + 1u32;
+                    }
+                    ii = ii + 1u32;
+                }
+
+                n[0] = hr[0] as uint32 & 0x03ffffffu32;
+                carry = hr[0] >> 26u64;
+                n[1] = (hr[1] + carry) as uint32 & 0x03ffffffu32;
+                carry = (hr[1] + carry) >> 26u64;
+                n[2] = (hr[2] + carry) as uint32 & 0x03ffffffu32;
+                carry = (hr[2] + carry) >> 26u64;
+                n[3] = (hr[3] + carry) as uint32 & 0x03ffffffu32;
+                carry = (hr[3] + carry) >> 26u64;
+                n[4] = (hr[4] + carry) as uint32 & 0x03ffffffu32;
+                carry = (hr[4] + carry) >> 26u64;
+
+                // carry * 5 into bottom
+                n[0] = n[0] + carry as uint32 * 5u32;
+                carry = n[0] as uint64 >> 26u64;
+                n[0] = n[0] & 0x03ffffffu32;
+                n[1] = n[1] + carry as uint32;
+                carry = n[1] as uint64 >> 26u64;
+                n[1] = n[1] & 0x03ffffffu32;
+                n[2] = n[2] + carry as uint32;
+                carry = n[2] as uint64 >> 26u64;
+                n[2] = n[2] & 0x03ffffffu32;
+                n[3] = n[3] + carry as uint32;
+                carry = n[3] as uint64 >> 26u64;
+                n[3] = n[3] & 0x03ffffffu32;
+                n[4] = n[4] + carry as uint32;
+
+                ctx.acc[0] = n[0];
+                ctx.acc[1] = n[1];
+                ctx.acc[2] = n[2];
+                ctx.acc[3] = n[3];
+                ctx.acc[4] = n[4];
+
+                ctx.bufLen = 0u32;
+            }
+        }
+    }
+
+    pub func Poly1305Final(ctx: *Poly1305Context, tag: *uint8) {
+        if ctx.bufLen > 0u32 {
+            ctx.buf[ctx.bufLen] = 0x01u8;
+            var i: uint32 = ctx.bufLen + 1u32;
+            while i < 16u32 {
+                ctx.buf[i] = 0x00u8;
+                i = i + 1u32;
+            }
+
+            var n: uint32[5];
+            n[0] = (ctx.buf[0] as uint32) | (ctx.buf[1] as uint32 << 8u32) | (ctx.buf[2] as uint32 << 16u32) | ((ctx.buf[3] as uint32 & 0x03u32) << 24u32);
+            n[1] = ((ctx.buf[3] as uint32 >> 2u32) & 0x0Fu32) | (ctx.buf[4] as uint32 << 6u32) | (ctx.buf[5] as uint32 << 14u32) | ((ctx.buf[6] as uint32 & 0x0Fu32) << 22u32);
+            n[2] = ((ctx.buf[6] as uint32 >> 4u32) & 0x03u32) | (ctx.buf[7] as uint32 << 4u32) | (ctx.buf[8] as uint32 << 12u32) | ((ctx.buf[9] as uint32 & 0x3Fu32) << 20u32);
+            n[3] = ((ctx.buf[9] as uint32 >> 6u32) & 0x07u32) | (ctx.buf[10] as uint32 << 2u32) | (ctx.buf[11] as uint32 << 10u32) | (ctx.buf[12] as uint32 << 18u32);
+            n[4] = ((ctx.buf[13] as uint32) | (ctx.buf[14] as uint32 << 8u32) | (ctx.buf[15] as uint32 << 16u32)) >> 2u32 & 0x0fffffffu32;
+
+            n[0] = n[0] + ctx.acc[0];
+            var carry: uint64 = n[0] as uint64 >> 26u64;
+            n[0] = n[0] & 0x03ffffffu32;
+            n[1] = n[1] + carry as uint32;
+            carry = n[1] as uint64 >> 26u64;
+            n[1] = n[1] & 0x03ffffffu32;
+            n[2] = n[2] + carry as uint32;
+            carry = n[2] as uint64 >> 26u64;
+            n[2] = n[2] & 0x03ffffffu32;
+            n[3] = n[3] + carry as uint32;
+            carry = n[3] as uint64 >> 26u64;
+            n[3] = n[3] & 0x03ffffffu32;
+            n[4] = n[4] + carry as uint32;
+
+            var hr: uint64[5];
+            hr[0] = 0u64; hr[1] = 0u64; hr[2] = 0u64; hr[3] = 0u64; hr[4] = 0u64;
+
+            var ii: uint32 = 0u32;
+            while ii < 5u32 {
+                var jj: uint32 = 0u32;
+                while jj < 5u32 - ii {
+                    let prod = n[ii] as uint64 * ctx.r[jj] as uint64;
+                    hr[ii + jj] = hr[ii + jj] + prod;
+                    jj = jj + 1u32;
+                }
+                ii = ii + 1u32;
+            }
+
+            n[0] = hr[0] as uint32 & 0x03ffffffu32;
+            carry = hr[0] >> 26u64;
+            n[1] = (hr[1] + carry) as uint32 & 0x03ffffffu32;
+            carry = (hr[1] + carry) >> 26u64;
+            n[2] = (hr[2] + carry) as uint32 & 0x03ffffffu32;
+            carry = (hr[2] + carry) >> 26u64;
+            n[3] = (hr[3] + carry) as uint32 & 0x03ffffffu32;
+            carry = (hr[3] + carry) >> 26u64;
+            n[4] = (hr[4] + carry) as uint32 & 0x03ffffffu32;
+            carry = (hr[4] + carry) >> 26u64;
+
+            n[0] = n[0] + carry as uint32 * 5u32;
+            carry = n[0] as uint64 >> 26u64;
+            n[0] = n[0] & 0x03ffffffu32;
+            n[1] = n[1] + carry as uint32;
+            carry = n[1] as uint64 >> 26u64;
+            n[1] = n[1] & 0x03ffffffu32;
+            n[2] = n[2] + carry as uint32;
+            carry = n[2] as uint64 >> 26u64;
+            n[2] = n[2] & 0x03ffffffu32;
+            n[3] = n[3] + carry as uint32;
+            carry = n[3] as uint64 >> 26u64;
+            n[3] = n[3] & 0x03ffffffu32;
+            n[4] = n[4] + carry as uint32;
+
+            ctx.acc[0] = n[0];
+            ctx.acc[1] = n[1];
+            ctx.acc[2] = n[2];
+            ctx.acc[3] = n[3];
+            ctx.acc[4] = n[4];
+        }
+
+        let a0 = ctx.acc[0] | (ctx.acc[1] << 26u32);
+        let a1 = (ctx.acc[1] >> 6u32) | (ctx.acc[2] << 20u32);
+        let a2 = (ctx.acc[2] >> 12u32) | (ctx.acc[3] << 14u32);
+        let a3 = (ctx.acc[3] >> 18u32) | (ctx.acc[4] << 8u32);
+
+        var f0: uint64 = a0 as uint64;
+        var f1: uint64 = a1 as uint64;
+        var f2: uint64 = a2 as uint64;
+        var f3: uint64 = a3 as uint64;
+
+        var g0: uint64;
+        var g1: uint64;
+        var g2: uint64;
+        var g3: uint64;
+
+        // Subtract 2^130-5 = 0x3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFB
+        // represented as: f0..f3 with carry chain
+        g0 = f0 - 0xFFFFFFFBu64;
+        g1 = f1 - 0xFFFFFFFFu64 - ((g0 >> 32u64) & 1u64);
+        g2 = f2 - 0xFFFFFFFFu64 - ((g1 >> 32u64) & 1u64);
+        g3 = f3 - 0x03u64 - ((g2 >> 32u64) & 1u64);
+        let select = (g3 >> 63u64) - 1u64;
+
+        f0 = (f0 & ~select) | (g0 & select);
+        f1 = (f1 & ~select) | (g1 & select);
+        f2 = (f2 & ~select) | (g2 & select);
+        f3 = (f3 & ~select) | (g3 & select);
+
+        // Add s
+        var accFinal: uint64[4];
+        accFinal[0] = f0 + ctx.s[0] as uint64;
+        accFinal[1] = f1 + ctx.s[1] as uint64 + (accFinal[0] >> 32u64);
+        accFinal[2] = f2 + ctx.s[2] as uint64 + (accFinal[1] >> 32u64);
+        accFinal[3] = f3 + ctx.s[3] as uint64 + (accFinal[2] >> 32u64);
+
+        tag[0]  =  accFinal[0]        as uint8;
+        tag[1]  = (accFinal[0] >> 8u64)  as uint8;
+        tag[2]  = (accFinal[0] >> 16u64) as uint8;
+        tag[3]  = (accFinal[0] >> 24u64) as uint8;
+        tag[4]  = (accFinal[0] >> 32u64) as uint8;
+        tag[5]  = (accFinal[0] >> 40u64) as uint8;
+        tag[6]  = (accFinal[0] >> 48u64) as uint8;
+        tag[7]  = (accFinal[0] >> 56u64) as uint8;
+        tag[8]  =  accFinal[1]        as uint8;
+        tag[9]  = (accFinal[1] >> 8u64)  as uint8;
+        tag[10] = (accFinal[1] >> 16u64) as uint8;
+        tag[11] = (accFinal[1] >> 24u64) as uint8;
+        tag[12] = (accFinal[2] >> 0u64)  as uint8;
+        tag[13] = (accFinal[2] >> 8u64)  as uint8;
+        tag[14] = (accFinal[2] >> 16u64) as uint8;
+        tag[15] = (accFinal[2] >> 24u64) as uint8;
+    }
+
+    pub func Poly1305Compute(
+        key: *const uint8,
+        data: *const uint8,
+        len: uint,
+        tag: *uint8
+    ) {
+        var ctx: Poly1305Context;
+        Poly1305Init(&ctx, key);
+        Poly1305Update(&ctx, data, len);
+        Poly1305Final(&ctx, tag);
+    }
+}

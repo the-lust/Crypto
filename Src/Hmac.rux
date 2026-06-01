@@ -1,0 +1,330 @@
+/*
+    Crypto — HMAC-SHA1 and HMAC-SHA256 (RFC 2104)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
+module Crypto {
+
+
+    // Structures
+
+
+    pub struct HmacSha1Context {
+        pub inner: Sha1Context;
+        pub outer: Sha1Context;
+    }
+
+    pub struct HmacSha256Context {
+        pub inner: Sha256Context;
+        pub outer: Sha256Context;
+    }
+
+    pub struct HmacSha512Context {
+        pub inner: Sha512Context;
+        pub outer: Sha512Context;
+    }
+
+
+    // HMAC-SHA1
+
+
+    /// Initialises an HMAC-SHA1 context with the given key
+    pub func HmacSha1Init(ctx: *HmacSha1Context, key: *const uint8, keyLen: uint) {
+        var keyBlock: uint8[64];
+
+        // Keys longer than block size are hashed down to 20 bytes
+        if keyLen > 64u {
+            var digest: uint8[20];
+            Sha1Hash(key, keyLen, &digest[0]);
+
+            var i: uint32 = 0u32;
+            while i < 20u32 {
+                keyBlock[i] = digest[i];
+                i = i + 1u32;
+            }
+            while i < 64u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        } else {
+            var i: uint32 = 0u32;
+            while i < keyLen as uint32 {
+                keyBlock[i] = key[i as uint];
+                i = i + 1u32;
+            }
+            while i < 64u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        }
+
+        // inner = SHA1(key XOR ipad || message)
+        var iPad: uint8[64];
+        var oPad: uint8[64];
+        var i: uint32 = 0u32;
+        while i < 64u32 {
+            iPad[i] = keyBlock[i] ^ 0x36u8;
+            oPad[i] = keyBlock[i] ^ 0x5Cu8;
+            i = i + 1u32;
+        }
+
+        Sha1Init(&ctx.inner);
+        Sha1Update(&ctx.inner, &iPad[0], 64u);
+
+        Sha1Init(&ctx.outer);
+        Sha1Update(&ctx.outer, &oPad[0], 64u);
+    }
+
+    /// Feeds data into the HMAC-SHA1 context
+    pub func HmacSha1Update(ctx: *HmacSha1Context, data: *const uint8, len: uint) {
+        Sha1Update(&ctx.inner, data, len);
+    }
+
+    /// Finalises HMAC-SHA1 and writes 20 bytes into out
+    pub func HmacSha1Final(ctx: *HmacSha1Context, out: *uint8) {
+        var innerDigest: uint8[20];
+        Sha1Final(&ctx.inner, &innerDigest[0]);
+        Sha1Update(&ctx.outer, &innerDigest[0], 20u);
+        Sha1Final(&ctx.outer, out);
+    }
+
+    /// One-shot HMAC-SHA1 — writes 20 bytes into out
+    pub func HmacSha1(
+        key:     *const uint8,
+        keyLen:  uint,
+        data:    *const uint8,
+        dataLen: uint,
+        out:     *uint8
+    ) {
+        var ctx: HmacSha1Context;
+        HmacSha1Init(&ctx, key, keyLen);
+        HmacSha1Update(&ctx, data, dataLen);
+        HmacSha1Final(&ctx, out);
+    }
+
+
+    // HMAC-SHA256
+
+
+    /// Initialises an HMAC-SHA256 context with the given key
+    pub func HmacSha256Init(ctx: *HmacSha256Context, key: *const uint8, keyLen: uint) {
+        var keyBlock: uint8[64];
+
+        // Keys longer than block size are hashed down to 32 bytes
+        if keyLen > 64u {
+            var digest: uint8[32];
+            Sha256Hash(key, keyLen, &digest[0]);
+
+            var i: uint32 = 0u32;
+            while i < 32u32 {
+                keyBlock[i] = digest[i];
+                i = i + 1u32;
+            }
+            while i < 64u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        } else {
+            var i: uint32 = 0u32;
+            while i < keyLen as uint32 {
+                keyBlock[i] = key[i as uint];
+                i = i + 1u32;
+            }
+            while i < 64u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        }
+
+        // Build inner and outer padded keys
+        var iPad: uint8[64];
+        var oPad: uint8[64];
+        var i: uint32 = 0u32;
+        while i < 64u32 {
+            iPad[i] = keyBlock[i] ^ 0x36u8;
+            oPad[i] = keyBlock[i] ^ 0x5Cu8;
+            i = i + 1u32;
+        }
+
+        Sha256Init(&ctx.inner);
+        Sha256Update(&ctx.inner, &iPad[0], 64u);
+
+        Sha256Init(&ctx.outer);
+        Sha256Update(&ctx.outer, &oPad[0], 64u);
+    }
+
+    /// Feeds data into the HMAC-SHA256 context
+    pub func HmacSha256Update(ctx: *HmacSha256Context, data: *const uint8, len: uint) {
+        Sha256Update(&ctx.inner, data, len);
+    }
+
+    /// Finalises HMAC-SHA256 and writes 32 bytes into out
+    pub func HmacSha256Final(ctx: *HmacSha256Context, out: *uint8) {
+        var innerDigest: uint8[32];
+        Sha256Final(&ctx.inner, &innerDigest[0]);
+        Sha256Update(&ctx.outer, &innerDigest[0], 32u);
+        Sha256Final(&ctx.outer, out);
+    }
+
+    /// One-shot HMAC-SHA256 — writes 32 bytes into out
+    pub func HmacSha256(
+        key:     *const uint8,
+        keyLen:  uint,
+        data:    *const uint8,
+        dataLen: uint,
+        out:     *uint8
+    ) {
+        var ctx: HmacSha256Context;
+        HmacSha256Init(&ctx, key, keyLen);
+        HmacSha256Update(&ctx, data, dataLen);
+        HmacSha256Final(&ctx, out);
+    }
+
+
+    // PBKDF2-HMAC-SHA256 (RFC 2898)
+
+
+    /// Derives a key from a password and salt using PBKDF2-HMAC-SHA256
+    /// out can be any length; iterations should be >= 10000 for passwords
+    pub func Pbkdf2HmacSha256(
+        password:   *const uint8,
+        passLen:    uint,
+        salt:       *const uint8,
+        saltLen:    uint,
+        iterations: uint32,
+        out:        *uint8,
+        outLen:     uint32
+    ) {
+        var block:  uint32 = 1u32;
+        var done:   uint32 = 0u32;
+
+        while done < outLen {
+            // U1 = HMAC(password, salt || blockCounter)
+            var saltBuf: uint8[256];
+            var i: uint32 = 0u32;
+            while i < saltLen as uint32 {
+                saltBuf[i] = salt[i as uint];
+                i = i + 1u32;
+            }
+            // Append 4-byte big-endian block counter
+            saltBuf[saltLen as uint32]       = ((block >> 24u32) & 0xFFu32) as uint8;
+            saltBuf[saltLen as uint32 + 1u32] = ((block >> 16u32) & 0xFFu32) as uint8;
+            saltBuf[saltLen as uint32 + 2u32] = ((block >>  8u32) & 0xFFu32) as uint8;
+            saltBuf[saltLen as uint32 + 3u32] = ( block            & 0xFFu32) as uint8;
+
+            var u:    uint8[32];
+            var xorAcc: uint8[32];
+
+            HmacSha256(password, passLen, &saltBuf[0], saltLen + 4u, &u[0]);
+
+            i = 0u32;
+            while i < 32u32 {
+                xorAcc[i] = u[i];
+                i = i + 1u32;
+            }
+
+            // Subsequent U_c iterations
+            var iter: uint32 = 1u32;
+            while iter < iterations {
+                var uNext: uint8[32];
+                HmacSha256(password, passLen, &u[0], 32u, &uNext[0]);
+                i = 0u32;
+                while i < 32u32 {
+                    xorAcc[i] = xorAcc[i] ^ uNext[i];
+                    u[i] = uNext[i];
+                    i = i + 1u32;
+                }
+                iter = iter + 1u32;
+            }
+
+            // Copy as many bytes from xorAcc as we still need
+            let take = (outLen - done < 32u32) ? outLen - done : 32u32;
+            i = 0u32;
+            while i < take {
+                out[done + i] = xorAcc[i];
+                i = i + 1u32;
+            }
+
+            done  = done + take;
+            block = block + 1u32;
+        }
+    }
+
+
+    // HMAC-SHA512
+
+
+    /// Initialises an HMAC-SHA512 context with the given key
+    pub func HmacSha512Init(ctx: *HmacSha512Context, key: *const uint8, keyLen: uint) {
+        var keyBlock: uint8[128];
+
+        if keyLen > 128u {
+            var digest: uint8[64];
+            Sha512Hash(key, keyLen, &digest[0]);
+
+            var i: uint32 = 0u32;
+            while i < 64u32 {
+                keyBlock[i] = digest[i];
+                i = i + 1u32;
+            }
+            while i < 128u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        } else {
+            var i: uint32 = 0u32;
+            while i < keyLen as uint32 {
+                keyBlock[i] = key[i as uint];
+                i = i + 1u32;
+            }
+            while i < 128u32 {
+                keyBlock[i] = 0x00u8;
+                i = i + 1u32;
+            }
+        }
+
+        var iPad: uint8[128];
+        var oPad: uint8[128];
+        var i: uint32 = 0u32;
+        while i < 128u32 {
+            iPad[i] = keyBlock[i] ^ 0x36u8;
+            oPad[i] = keyBlock[i] ^ 0x5Cu8;
+            i = i + 1u32;
+        }
+
+        Sha512Init(&ctx.inner);
+        Sha512Update(&ctx.inner, &iPad[0], 128u);
+
+        Sha512Init(&ctx.outer);
+        Sha512Update(&ctx.outer, &oPad[0], 128u);
+    }
+
+    /// Feeds data into the HMAC-SHA512 context
+    pub func HmacSha512Update(ctx: *HmacSha512Context, data: *const uint8, len: uint) {
+        Sha512Update(&ctx.inner, data, len);
+    }
+
+    /// Finalises HMAC-SHA512 and writes 64 bytes into out
+    pub func HmacSha512Final(ctx: *HmacSha512Context, out: *uint8) {
+        var innerDigest: uint8[64];
+        Sha512Final(&ctx.inner, &innerDigest[0]);
+        Sha512Update(&ctx.outer, &innerDigest[0], 64u);
+        Sha512Final(&ctx.outer, out);
+    }
+
+    /// One-shot HMAC-SHA512 — writes 64 bytes into out
+    pub func HmacSha512(
+        key:     *const uint8,
+        keyLen:  uint,
+        data:    *const uint8,
+        dataLen: uint,
+        out:     *uint8
+    ) {
+        var ctx: HmacSha512Context;
+        HmacSha512Init(&ctx, key, keyLen);
+        HmacSha512Update(&ctx, data, dataLen);
+        HmacSha512Final(&ctx, out);
+    }
+}

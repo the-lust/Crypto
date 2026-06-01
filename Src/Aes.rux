@@ -1,0 +1,489 @@
+/*
+    Crypto — AES-128 / AES-256 block cipher, ECB and CBC modes (FIPS 197)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
+module Crypto {
+
+
+    // Constants
+
+
+    pub const AES_BLOCK_SIZE:   uint32 = 16u32;
+    pub const AES_128_KEY_SIZE: uint32 = 16u32;
+    pub const AES_256_KEY_SIZE: uint32 = 32u32;
+
+
+    // Structures
+
+
+    pub struct AesContext {
+        pub roundKeys: uint8[240];  // enough for AES-256 (60 words × 4 bytes)
+        pub rounds:    uint32;      // 10 for AES-128, 14 for AES-256
+    }
+
+
+    // Internal — GF(2^8) multiply
+
+
+    func AesXtime(b: uint8) -> uint8 {
+        // Multiply by 2 in GF(2^8) with reduction polynomial x^8+x^4+x^3+x+1
+        let shifted = b << 1u8;
+        let mask    = ((b >> 7u8) & 0x01u8) * 0x1Bu8;
+        return shifted ^ mask;
+    }
+
+    func AesMul(a: uint8, b: uint8) -> uint8 {
+        // Multiply a by b in GF(2^8) using double-and-add
+        var result: uint8 = 0x00u8;
+        var aa:     uint8 = a;
+        var bb:     uint8 = b;
+        while bb != 0x00u8 {
+            if (bb & 0x01u8) != 0x00u8 {
+                result = result ^ aa;
+            }
+            aa = AesXtime(aa);
+            bb = bb >> 1u8;
+        }
+        return result;
+    }
+
+
+    // Internal — S-box tables
+
+
+    func AesSboxAt(i: uint8) -> uint8 {
+        // AES forward S-box, row-by-row (256 entries)
+        var S: uint8[256];
+        S[0]   = 0x63u8; S[1]   = 0x7cu8; S[2]   = 0x77u8; S[3]   = 0x7bu8;
+        S[4]   = 0xf2u8; S[5]   = 0x6bu8; S[6]   = 0x6fu8; S[7]   = 0xc5u8;
+        S[8]   = 0x30u8; S[9]   = 0x01u8; S[10]  = 0x67u8; S[11]  = 0x2bu8;
+        S[12]  = 0xfeu8; S[13]  = 0xd7u8; S[14]  = 0xabu8; S[15]  = 0x76u8;
+        S[16]  = 0xcau8; S[17]  = 0x82u8; S[18]  = 0xc9u8; S[19]  = 0x7du8;
+        S[20]  = 0xfau8; S[21]  = 0x59u8; S[22]  = 0x47u8; S[23]  = 0xf0u8;
+        S[24]  = 0xadu8; S[25]  = 0xd4u8; S[26]  = 0xa2u8; S[27]  = 0xafu8;
+        S[28]  = 0x9cu8; S[29]  = 0xa4u8; S[30]  = 0x72u8; S[31]  = 0xc0u8;
+        S[32]  = 0xb7u8; S[33]  = 0xfdu8; S[34]  = 0x93u8; S[35]  = 0x26u8;
+        S[36]  = 0x36u8; S[37]  = 0x3fu8; S[38]  = 0xf7u8; S[39]  = 0xccu8;
+        S[40]  = 0x34u8; S[41]  = 0xa5u8; S[42]  = 0xe5u8; S[43]  = 0xf1u8;
+        S[44]  = 0x71u8; S[45]  = 0xd8u8; S[46]  = 0x31u8; S[47]  = 0x15u8;
+        S[48]  = 0x04u8; S[49]  = 0xc7u8; S[50]  = 0x23u8; S[51]  = 0xc3u8;
+        S[52]  = 0x18u8; S[53]  = 0x96u8; S[54]  = 0x05u8; S[55]  = 0x9au8;
+        S[56]  = 0x07u8; S[57]  = 0x12u8; S[58]  = 0x80u8; S[59]  = 0xe2u8;
+        S[60]  = 0xebu8; S[61]  = 0x27u8; S[62]  = 0xb2u8; S[63]  = 0x75u8;
+        S[64]  = 0x09u8; S[65]  = 0x83u8; S[66]  = 0x2cu8; S[67]  = 0x1au8;
+        S[68]  = 0x1bu8; S[69]  = 0x6eu8; S[70]  = 0x5au8; S[71]  = 0xa0u8;
+        S[72]  = 0x52u8; S[73]  = 0x3bu8; S[74]  = 0xd6u8; S[75]  = 0xb3u8;
+        S[76]  = 0x29u8; S[77]  = 0xe3u8; S[78]  = 0x2fu8; S[79]  = 0x84u8;
+        S[80]  = 0x53u8; S[81]  = 0xd1u8; S[82]  = 0x00u8; S[83]  = 0xedu8;
+        S[84]  = 0x20u8; S[85]  = 0xfcu8; S[86]  = 0xb1u8; S[87]  = 0x5bu8;
+        S[88]  = 0x6au8; S[89]  = 0xcbu8; S[90]  = 0xbeu8; S[91]  = 0x39u8;
+        S[92]  = 0x4au8; S[93]  = 0x4cu8; S[94]  = 0x58u8; S[95]  = 0xcfu8;
+        S[96]  = 0xd0u8; S[97]  = 0xefu8; S[98]  = 0xaau8; S[99]  = 0xfbu8;
+        S[100] = 0x43u8; S[101] = 0x4du8; S[102] = 0x33u8; S[103] = 0x85u8;
+        S[104] = 0x45u8; S[105] = 0xf9u8; S[106] = 0x02u8; S[107] = 0x7fu8;
+        S[108] = 0x50u8; S[109] = 0x3cu8; S[110] = 0x9fu8; S[111] = 0xa8u8;
+        S[112] = 0x51u8; S[113] = 0xa3u8; S[114] = 0x40u8; S[115] = 0x8fu8;
+        S[116] = 0x92u8; S[117] = 0x9du8; S[118] = 0x38u8; S[119] = 0xf5u8;
+        S[120] = 0xbcu8; S[121] = 0xb6u8; S[122] = 0xdau8; S[123] = 0x21u8;
+        S[124] = 0x10u8; S[125] = 0xffu8; S[126] = 0xf3u8; S[127] = 0xd2u8;
+        S[128] = 0xcdu8; S[129] = 0x0cu8; S[130] = 0x13u8; S[131] = 0xecu8;
+        S[132] = 0x5fu8; S[133] = 0x97u8; S[134] = 0x44u8; S[135] = 0x17u8;
+        S[136] = 0xc4u8; S[137] = 0xa7u8; S[138] = 0x7eu8; S[139] = 0x3du8;
+        S[140] = 0x64u8; S[141] = 0x5du8; S[142] = 0x19u8; S[143] = 0x73u8;
+        S[144] = 0x60u8; S[145] = 0x81u8; S[146] = 0x4fu8; S[147] = 0xdcu8;
+        S[148] = 0x22u8; S[149] = 0x2au8; S[150] = 0x90u8; S[151] = 0x88u8;
+        S[152] = 0x46u8; S[153] = 0xeeu8; S[154] = 0xb8u8; S[155] = 0x14u8;
+        S[156] = 0xdeu8; S[157] = 0x5eu8; S[158] = 0x0bu8; S[159] = 0xdbu8;
+        S[160] = 0xe0u8; S[161] = 0x32u8; S[162] = 0x3au8; S[163] = 0x0au8;
+        S[164] = 0x49u8; S[165] = 0x06u8; S[166] = 0x24u8; S[167] = 0x5cu8;
+        S[168] = 0xc2u8; S[169] = 0xd3u8; S[170] = 0xacu8; S[171] = 0x62u8;
+        S[172] = 0x91u8; S[173] = 0x95u8; S[174] = 0xe4u8; S[175] = 0x79u8;
+        S[176] = 0xe7u8; S[177] = 0xc8u8; S[178] = 0x37u8; S[179] = 0x6du8;
+        S[180] = 0x8du8; S[181] = 0xd5u8; S[182] = 0x4eu8; S[183] = 0xa9u8;
+        S[184] = 0x6cu8; S[185] = 0x56u8; S[186] = 0xf4u8; S[187] = 0xeau8;
+        S[188] = 0x65u8; S[189] = 0x7au8; S[190] = 0xaeu8; S[191] = 0x08u8;
+        S[192] = 0xbau8; S[193] = 0x78u8; S[194] = 0x25u8; S[195] = 0x2eu8;
+        S[196] = 0x1cu8; S[197] = 0xa6u8; S[198] = 0xb4u8; S[199] = 0xc6u8;
+        S[200] = 0xe8u8; S[201] = 0xddu8; S[202] = 0x74u8; S[203] = 0x1fu8;
+        S[204] = 0x4bu8; S[205] = 0xbdu8; S[206] = 0x8bu8; S[207] = 0x8au8;
+        S[208] = 0x70u8; S[209] = 0x3eu8; S[210] = 0xb5u8; S[211] = 0x66u8;
+        S[212] = 0x48u8; S[213] = 0x03u8; S[214] = 0xf6u8; S[215] = 0x0eu8;
+        S[216] = 0x61u8; S[217] = 0x35u8; S[218] = 0x57u8; S[219] = 0xb9u8;
+        S[220] = 0x86u8; S[221] = 0xc1u8; S[222] = 0x1du8; S[223] = 0x9eu8;
+        S[224] = 0xe1u8; S[225] = 0xf8u8; S[226] = 0x98u8; S[227] = 0x11u8;
+        S[228] = 0x69u8; S[229] = 0xd9u8; S[230] = 0x8eu8; S[231] = 0x94u8;
+        S[232] = 0x9bu8; S[233] = 0x1eu8; S[234] = 0x87u8; S[235] = 0xe9u8;
+        S[236] = 0xceu8; S[237] = 0x55u8; S[238] = 0x28u8; S[239] = 0xdfu8;
+        S[240] = 0x8cu8; S[241] = 0xa1u8; S[242] = 0x89u8; S[243] = 0x0du8;
+        S[244] = 0xbfu8; S[245] = 0xe6u8; S[246] = 0x42u8; S[247] = 0x68u8;
+        S[248] = 0x41u8; S[249] = 0x99u8; S[250] = 0x2du8; S[251] = 0x0fu8;
+        S[252] = 0xb0u8; S[253] = 0x54u8; S[254] = 0xbbu8; S[255] = 0x16u8;
+        return S[i as uint32];
+    }
+
+    func AesSboxInvAt(i: uint8) -> uint8 {
+        // AES inverse S-box
+        var S: uint8[256];
+        S[0]   = 0x52u8; S[1]   = 0x09u8; S[2]   = 0x6au8; S[3]   = 0xd5u8;
+        S[4]   = 0x30u8; S[5]   = 0x36u8; S[6]   = 0xa5u8; S[7]   = 0x38u8;
+        S[8]   = 0xbfu8; S[9]   = 0x40u8; S[10]  = 0xa3u8; S[11]  = 0x9eu8;
+        S[12]  = 0x81u8; S[13]  = 0xf3u8; S[14]  = 0xd7u8; S[15]  = 0xfbu8;
+        S[16]  = 0x7cu8; S[17]  = 0xe3u8; S[18]  = 0x39u8; S[19]  = 0x82u8;
+        S[20]  = 0x9bu8; S[21]  = 0x2fu8; S[22]  = 0xffu8; S[23]  = 0x87u8;
+        S[24]  = 0x34u8; S[25]  = 0x8eu8; S[26]  = 0x43u8; S[27]  = 0x44u8;
+        S[28]  = 0xc4u8; S[29]  = 0xdeu8; S[30]  = 0xe9u8; S[31]  = 0xcbu8;
+        S[32]  = 0x54u8; S[33]  = 0x7bu8; S[34]  = 0x94u8; S[35]  = 0x32u8;
+        S[36]  = 0xa6u8; S[37]  = 0xc2u8; S[38]  = 0x23u8; S[39]  = 0x3du8;
+        S[40]  = 0xeeu8; S[41]  = 0x4cu8; S[42]  = 0x95u8; S[43]  = 0x0bu8;
+        S[44]  = 0x42u8; S[45]  = 0xfau8; S[46]  = 0xc3u8; S[47]  = 0x4eu8;
+        S[48]  = 0x08u8; S[49]  = 0x2eu8; S[50]  = 0xa1u8; S[51]  = 0x66u8;
+        S[52]  = 0x28u8; S[53]  = 0xd9u8; S[54]  = 0x24u8; S[55]  = 0xb2u8;
+        S[56]  = 0x76u8; S[57]  = 0x5bu8; S[58]  = 0xa2u8; S[59]  = 0x49u8;
+        S[60]  = 0x6du8; S[61]  = 0x8bu8; S[62]  = 0xd1u8; S[63]  = 0x25u8;
+        S[64]  = 0x72u8; S[65]  = 0xf8u8; S[66]  = 0xf6u8; S[67]  = 0x64u8;
+        S[68]  = 0x86u8; S[69]  = 0x68u8; S[70]  = 0x98u8; S[71]  = 0x16u8;
+        S[72]  = 0xd4u8; S[73]  = 0xa4u8; S[74]  = 0x5cu8; S[75]  = 0xccu8;
+        S[76]  = 0x5du8; S[77]  = 0x65u8; S[78]  = 0xb6u8; S[79]  = 0x92u8;
+        S[80]  = 0x6cu8; S[81]  = 0x70u8; S[82]  = 0x48u8; S[83]  = 0x50u8;
+        S[84]  = 0xfdu8; S[85]  = 0xedu8; S[86]  = 0xb9u8; S[87]  = 0xdau8;
+        S[88]  = 0x5eu8; S[89]  = 0x15u8; S[90]  = 0x46u8; S[91]  = 0x57u8;
+        S[92]  = 0xa7u8; S[93]  = 0x8du8; S[94]  = 0x9du8; S[95]  = 0x84u8;
+        S[96]  = 0x90u8; S[97]  = 0xd8u8; S[98]  = 0xabu8; S[99]  = 0x00u8;
+        S[100] = 0x8cu8; S[101] = 0xbcu8; S[102] = 0xd3u8; S[103] = 0x0au8;
+        S[104] = 0xf7u8; S[105] = 0xe4u8; S[106] = 0x58u8; S[107] = 0x05u8;
+        S[108] = 0xb8u8; S[109] = 0xb3u8; S[110] = 0x45u8; S[111] = 0x06u8;
+        S[112] = 0xd0u8; S[113] = 0x2cu8; S[114] = 0x1eu8; S[115] = 0x8fu8;
+        S[116] = 0xcau8; S[117] = 0x3fu8; S[118] = 0x0fu8; S[119] = 0x02u8;
+        S[120] = 0xc1u8; S[121] = 0xafu8; S[122] = 0xbdu8; S[123] = 0x03u8;
+        S[124] = 0x01u8; S[125] = 0x13u8; S[126] = 0x8au8; S[127] = 0x6bu8;
+        S[128] = 0x3au8; S[129] = 0x91u8; S[130] = 0x11u8; S[131] = 0x41u8;
+        S[132] = 0x4fu8; S[133] = 0x67u8; S[134] = 0xdcu8; S[135] = 0xeau8;
+        S[136] = 0x97u8; S[137] = 0xf2u8; S[138] = 0xcfu8; S[139] = 0xceu8;
+        S[140] = 0xf0u8; S[141] = 0xb4u8; S[142] = 0xe6u8; S[143] = 0x73u8;
+        S[144] = 0x96u8; S[145] = 0xacu8; S[146] = 0x74u8; S[147] = 0x22u8;
+        S[148] = 0xe7u8; S[149] = 0xadu8; S[150] = 0x35u8; S[151] = 0x85u8;
+        S[152] = 0xe2u8; S[153] = 0xf9u8; S[154] = 0x37u8; S[155] = 0xe8u8;
+        S[156] = 0x1cu8; S[157] = 0x75u8; S[158] = 0xdfu8; S[159] = 0x6eu8;
+        S[160] = 0x47u8; S[161] = 0xf1u8; S[162] = 0x1au8; S[163] = 0x71u8;
+        S[164] = 0x1du8; S[165] = 0x29u8; S[166] = 0xc5u8; S[167] = 0x89u8;
+        S[168] = 0x6fu8; S[169] = 0xb7u8; S[170] = 0x62u8; S[171] = 0x0eu8;
+        S[172] = 0xaau8; S[173] = 0x18u8; S[174] = 0xbeu8; S[175] = 0x1bu8;
+        S[176] = 0xfcu8; S[177] = 0x56u8; S[178] = 0x3eu8; S[179] = 0x4bu8;
+        S[180] = 0xc6u8; S[181] = 0xd2u8; S[182] = 0x79u8; S[183] = 0x20u8;
+        S[184] = 0x9au8; S[185] = 0xdbu8; S[186] = 0xc0u8; S[187] = 0xfeu8;
+        S[188] = 0x78u8; S[189] = 0xcdu8; S[190] = 0x5au8; S[191] = 0xf4u8;
+        S[192] = 0x1fu8; S[193] = 0xddu8; S[194] = 0xa8u8; S[195] = 0x33u8;
+        S[196] = 0x88u8; S[197] = 0x07u8; S[198] = 0xc7u8; S[199] = 0x31u8;
+        S[200] = 0xb1u8; S[201] = 0x12u8; S[202] = 0x10u8; S[203] = 0x59u8;
+        S[204] = 0x27u8; S[205] = 0x80u8; S[206] = 0xecu8; S[207] = 0x5fu8;
+        S[208] = 0x60u8; S[209] = 0x51u8; S[210] = 0x7fu8; S[211] = 0xa9u8;
+        S[212] = 0x19u8; S[213] = 0xb5u8; S[214] = 0x4au8; S[215] = 0x0du8;
+        S[216] = 0x2du8; S[217] = 0xe5u8; S[218] = 0x7au8; S[219] = 0x9fu8;
+        S[220] = 0x93u8; S[221] = 0xc9u8; S[222] = 0x9cu8; S[223] = 0xefu8;
+        S[224] = 0xa0u8; S[225] = 0xe0u8; S[226] = 0x3bu8; S[227] = 0x4du8;
+        S[228] = 0xaeu8; S[229] = 0x2au8; S[230] = 0xf5u8; S[231] = 0xb0u8;
+        S[232] = 0xc8u8; S[233] = 0xebu8; S[234] = 0xbbu8; S[235] = 0x3cu8;
+        S[236] = 0x83u8; S[237] = 0x53u8; S[238] = 0x99u8; S[239] = 0x61u8;
+        S[240] = 0x17u8; S[241] = 0x2bu8; S[242] = 0x04u8; S[243] = 0x7eu8;
+        S[244] = 0xbau8; S[245] = 0x77u8; S[246] = 0xd6u8; S[247] = 0x26u8;
+        S[248] = 0xe1u8; S[249] = 0x69u8; S[250] = 0x14u8; S[251] = 0x63u8;
+        S[252] = 0x55u8; S[253] = 0x21u8; S[254] = 0x0cu8; S[255] = 0x7du8;
+        return S[i as uint32];
+    }
+
+
+    // Internal — key expansion
+
+
+    func AesSubWord(w: uint32) -> uint32 {
+        return (AesSboxAt(((w >> 24u32) & 0xFFu32) as uint8) as uint32 << 24u32)
+             | (AesSboxAt(((w >> 16u32) & 0xFFu32) as uint8) as uint32 << 16u32)
+             | (AesSboxAt(((w >>  8u32) & 0xFFu32) as uint8) as uint32 <<  8u32)
+             | (AesSboxAt(( w           & 0xFFu32) as uint8) as uint32);
+    }
+
+    func AesRotWord(w: uint32) -> uint32 {
+        return (w << 8u32) | (w >> 24u32);
+    }
+
+    func AesExpandKey(ctx: *AesContext, key: *const uint8, keyBits: uint32) {
+        let nk = keyBits / 32u32;   // 4 for AES-128, 8 for AES-256
+        let nr = nk + 6u32;         // 10 for AES-128, 14 for AES-256
+        ctx.rounds = nr;
+
+        // Total words needed: (rounds+1) * 4
+        let totalWords = (nr + 1u32) * 4u32;
+
+        // Rcon table (first 11 values, index starts at 1)
+        var Rcon: uint32[11];
+        Rcon[0]  = 0x00000000u32;
+        Rcon[1]  = 0x01000000u32;
+        Rcon[2]  = 0x02000000u32;
+        Rcon[3]  = 0x04000000u32;
+        Rcon[4]  = 0x08000000u32;
+        Rcon[5]  = 0x10000000u32;
+        Rcon[6]  = 0x20000000u32;
+        Rcon[7]  = 0x40000000u32;
+        Rcon[8]  = 0x80000000u32;
+        Rcon[9]  = 0x1b000000u32;
+        Rcon[10] = 0x36000000u32;
+
+        var W: uint32[60];
+
+        // Load raw key words
+        var i: uint32 = 0u32;
+        while i < nk {
+            let j = i * 4u32;
+            W[i] = (key[j as uint]           as uint32 << 24u32)
+                 | (key[(j + 1u32) as uint]  as uint32 << 16u32)
+                 | (key[(j + 2u32) as uint]  as uint32 <<  8u32)
+                 | (key[(j + 3u32) as uint]  as uint32);
+            i = i + 1u32;
+        }
+
+        // Expand
+        i = nk;
+        while i < totalWords {
+            var temp = W[i - 1u32];
+            if (i % nk) == 0u32 {
+                temp = AesSubWord(AesRotWord(temp)) ^ Rcon[i / nk];
+            } else if nk > 6u32 && (i % nk) == 4u32 {
+                temp = AesSubWord(temp);
+            }
+            W[i] = W[i - nk] ^ temp;
+            i = i + 1u32;
+        }
+
+        // Store round keys as bytes into ctx.roundKeys
+        i = 0u32;
+        while i < totalWords {
+            let base = i * 4u32;
+            ctx.roundKeys[base]       = ((W[i] >> 24u32) & 0xFFu32) as uint8;
+            ctx.roundKeys[base + 1u32] = ((W[i] >> 16u32) & 0xFFu32) as uint8;
+            ctx.roundKeys[base + 2u32] = ((W[i] >>  8u32) & 0xFFu32) as uint8;
+            ctx.roundKeys[base + 3u32] = ( W[i]           & 0xFFu32) as uint8;
+            i = i + 1u32;
+        }
+    }
+
+
+    // Internal — single block encrypt/decrypt
+
+
+    func AesAddRoundKey(state: *uint8, rk: *const uint8) {
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            state[i] = state[i] ^ rk[i];
+            i = i + 1u32;
+        }
+    }
+
+    func AesSubBytes(state: *uint8) {
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            state[i] = AesSboxAt(state[i]);
+            i = i + 1u32;
+        }
+    }
+
+    func AesSubBytesInv(state: *uint8) {
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            state[i] = AesSboxInvAt(state[i]);
+            i = i + 1u32;
+        }
+    }
+
+    func AesShiftRows(state: *uint8) {
+        // Row 1: shift left by 1
+        let t1 = state[1];
+        state[1] = state[5]; state[5] = state[9]; state[9] = state[13]; state[13] = t1;
+        // Row 2: shift left by 2
+        let t2a = state[2]; let t2b = state[6];
+        state[2] = state[10]; state[6] = state[14]; state[10] = t2a; state[14] = t2b;
+        // Row 3: shift left by 3 (= shift right by 1)
+        let t3 = state[15];
+        state[15] = state[11]; state[11] = state[7]; state[7] = state[3]; state[3] = t3;
+    }
+
+    func AesShiftRowsInv(state: *uint8) {
+        // Row 1: shift right by 1
+        let t1 = state[13];
+        state[13] = state[9]; state[9] = state[5]; state[5] = state[1]; state[1] = t1;
+        // Row 2: shift right by 2
+        let t2a = state[2]; let t2b = state[6];
+        state[2] = state[10]; state[6] = state[14]; state[10] = t2a; state[14] = t2b;
+        // Row 3: shift right by 3 (= shift left by 1)
+        let t3 = state[3];
+        state[3] = state[7]; state[7] = state[11]; state[11] = state[15]; state[15] = t3;
+    }
+
+    func AesMixColumns(state: *uint8) {
+        var col: uint32 = 0u32;
+        while col < 4u32 {
+            let b = col * 4u32;
+            let s0 = state[b];
+            let s1 = state[b + 1u32];
+            let s2 = state[b + 2u32];
+            let s3 = state[b + 3u32];
+            state[b]        = AesMul(0x02u8, s0) ^ AesMul(0x03u8, s1) ^ s2 ^ s3;
+            state[b + 1u32] = s0 ^ AesMul(0x02u8, s1) ^ AesMul(0x03u8, s2) ^ s3;
+            state[b + 2u32] = s0 ^ s1 ^ AesMul(0x02u8, s2) ^ AesMul(0x03u8, s3);
+            state[b + 3u32] = AesMul(0x03u8, s0) ^ s1 ^ s2 ^ AesMul(0x02u8, s3);
+            col = col + 1u32;
+        }
+    }
+
+    func AesMixColumnsInv(state: *uint8) {
+        var col: uint32 = 0u32;
+        while col < 4u32 {
+            let b = col * 4u32;
+            let s0 = state[b];
+            let s1 = state[b + 1u32];
+            let s2 = state[b + 2u32];
+            let s3 = state[b + 3u32];
+            state[b]        = AesMul(0x0eu8, s0) ^ AesMul(0x0bu8, s1) ^ AesMul(0x0du8, s2) ^ AesMul(0x09u8, s3);
+            state[b + 1u32] = AesMul(0x09u8, s0) ^ AesMul(0x0eu8, s1) ^ AesMul(0x0bu8, s2) ^ AesMul(0x0du8, s3);
+            state[b + 2u32] = AesMul(0x0du8, s0) ^ AesMul(0x09u8, s1) ^ AesMul(0x0eu8, s2) ^ AesMul(0x0bu8, s3);
+            state[b + 3u32] = AesMul(0x0bu8, s0) ^ AesMul(0x0du8, s1) ^ AesMul(0x09u8, s2) ^ AesMul(0x0eu8, s3);
+            col = col + 1u32;
+        }
+    }
+
+    func AesEncryptBlock(ctx: *AesContext, input: *const uint8, output: *uint8) {
+        var state: uint8[16];
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            state[i] = input[i];
+            i = i + 1u32;
+        }
+
+        AesAddRoundKey(&state[0], &ctx.roundKeys[0]);
+
+        var round: uint32 = 1u32;
+        while round < ctx.rounds {
+            AesSubBytes(&state[0]);
+            AesShiftRows(&state[0]);
+            AesMixColumns(&state[0]);
+            AesAddRoundKey(&state[0], &ctx.roundKeys[round * 16u32]);
+            round = round + 1u32;
+        }
+
+        // Final round — no MixColumns
+        AesSubBytes(&state[0]);
+        AesShiftRows(&state[0]);
+        AesAddRoundKey(&state[0], &ctx.roundKeys[ctx.rounds * 16u32]);
+
+        i = 0u32;
+        while i < 16u32 {
+            output[i] = state[i];
+            i = i + 1u32;
+        }
+    }
+
+    func AesDecryptBlock(ctx: *AesContext, input: *const uint8, output: *uint8) {
+        var state: uint8[16];
+        var i: uint32 = 0u32;
+        while i < 16u32 {
+            state[i] = input[i];
+            i = i + 1u32;
+        }
+
+        AesAddRoundKey(&state[0], &ctx.roundKeys[ctx.rounds * 16u32]);
+
+        var round: uint32 = ctx.rounds - 1u32;
+        while round > 0u32 {
+            AesShiftRowsInv(&state[0]);
+            AesSubBytesInv(&state[0]);
+            AesAddRoundKey(&state[0], &ctx.roundKeys[round * 16u32]);
+            AesMixColumnsInv(&state[0]);
+            round = round - 1u32;
+        }
+
+        // Final round
+        AesShiftRowsInv(&state[0]);
+        AesSubBytesInv(&state[0]);
+        AesAddRoundKey(&state[0], &ctx.roundKeys[0]);
+
+        i = 0u32;
+        while i < 16u32 {
+            output[i] = state[i];
+            i = i + 1u32;
+        }
+    }
+
+
+    // Public API
+
+
+    /// Initialises an AesContext for encryption with a 128 or 256-bit key
+    /// keyBits must be 128 or 256
+    pub func AesInitEncrypt(ctx: *AesContext, key: *const uint8, keyBits: uint32) {
+        AesExpandKey(ctx, key, keyBits);
+    }
+
+    /// Initialises an AesContext for decryption with a 128 or 256-bit key
+    /// keyBits must be 128 or 256
+    pub func AesInitDecrypt(ctx: *AesContext, key: *const uint8, keyBits: uint32) {
+        AesExpandKey(ctx, key, keyBits);
+    }
+
+    /// Encrypts a single 16-byte block in ECB mode
+    pub func AesEcbEncrypt(ctx: *AesContext, input: *const uint8, output: *uint8) {
+        AesEncryptBlock(ctx, input, output);
+    }
+
+    /// Decrypts a single 16-byte block in ECB mode
+    pub func AesEcbDecrypt(ctx: *AesContext, input: *const uint8, output: *uint8) {
+        AesDecryptBlock(ctx, input, output);
+    }
+
+    /// Encrypts len bytes in CBC mode
+    /// len must be a multiple of 16; iv is consumed (mutated) block by block
+    pub func AesCbcEncrypt(ctx: *AesContext, iv: *uint8, input: *const uint8, output: *uint8, len: uint32) {
+        var offset: uint32 = 0u32;
+        while offset < len {
+            // XOR plaintext block with IV (or previous ciphertext block)
+            var block: uint8[16];
+            var i: uint32 = 0u32;
+            while i < 16u32 {
+                block[i] = input[offset + i] ^ iv[i];
+                i = i + 1u32;
+            }
+            AesEncryptBlock(ctx, &block[0], &output[offset]);
+            // Update IV to current ciphertext block
+            i = 0u32;
+            while i < 16u32 {
+                iv[i] = output[offset + i];
+                i = i + 1u32;
+            }
+            offset = offset + 16u32;
+        }
+    }
+
+    /// Decrypts len bytes in CBC mode
+    /// len must be a multiple of 16; iv is consumed (mutated) block by block
+    pub func AesCbcDecrypt(ctx: *AesContext, iv: *uint8, input: *const uint8, output: *uint8, len: uint32) {
+        var offset: uint32 = 0u32;
+        while offset < len {
+            var block: uint8[16];
+            AesDecryptBlock(ctx, &input[offset], &block[0]);
+            // XOR with IV to recover plaintext
+            var i: uint32 = 0u32;
+            while i < 16u32 {
+                output[offset + i] = block[i] ^ iv[i];
+                i = i + 1u32;
+            }
+            // Update IV to current ciphertext block
+            i = 0u32;
+            while i < 16u32 {
+                iv[i] = input[offset + i];
+                i = i + 1u32;
+            }
+            offset = offset + 16u32;
+        }
+    }
+}

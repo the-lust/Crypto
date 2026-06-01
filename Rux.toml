@@ -1,0 +1,6 @@
+[Package]
+Name = "Crypto"
+Version = "0.1.0"
+Type = "Source"
+Description = "Universal pure-Rux crypto: SHA-1/256/512, SHA-3, HMAC, AES, ChaCha20, Poly1305, PBKDF2, Hex/Base64"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]

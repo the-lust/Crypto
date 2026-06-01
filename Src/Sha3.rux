@@ -1,0 +1,232 @@
+module Crypto {
+
+    pub const SHA3_256_DIGEST_SIZE: uint32 = 32u32;
+    pub const SHA3_512_DIGEST_SIZE: uint32 = 64u32;
+
+    pub const KECCAK_BLOCKSIZE_256: uint32 = 136u32;
+    pub const KECCAK_BLOCKSIZE_512: uint32 = 72u32;
+
+    pub struct Sha3Context {
+        pub state: uint64[25];
+        pub buf:   uint8[200];
+        pub bufLen: uint32;
+        pub blockSize: uint32;
+        pub digestSize: uint32;
+    }
+
+    func KeccakRoundConstants(i: uint32) -> uint64 {
+        var RC: uint64[24];
+        RC[0]  = 0x0000000000000001u64; RC[1]  = 0x0000000000008082u64;
+        RC[2]  = 0x800000000000808au64; RC[3]  = 0x8000000080008000u64;
+        RC[4]  = 0x000000000000808bu64; RC[5]  = 0x0000000080000001u64;
+        RC[6]  = 0x8000000080008081u64; RC[7]  = 0x8000000000008009u64;
+        RC[8]  = 0x000000000000008au64; RC[9]  = 0x0000000000000088u64;
+        RC[10] = 0x0000000080008009u64; RC[11] = 0x000000008000000au64;
+        RC[12] = 0x000000008000808bu64; RC[13] = 0x800000000000008bu64;
+        RC[14] = 0x8000000000008089u64; RC[15] = 0x8000000000008003u64;
+        RC[16] = 0x8000000000008002u64; RC[17] = 0x8000000000000080u64;
+        RC[18] = 0x000000000000800au64; RC[19] = 0x800000008000000au64;
+        RC[20] = 0x8000000080008081u64; RC[21] = 0x8000000000008080u64;
+        RC[22] = 0x0000000080000001u64; RC[23] = 0x8000000080008008u64;
+        return RC[i];
+    }
+
+    func KeccakRotl64(x: uint64, n: uint32) -> uint64 {
+        return (x << n) | (x >> (64u32 - n));
+    }
+
+    func KeccakF1600(state: *uint64) {
+        var lanes: uint64[25];
+        var i: uint32;
+
+        var round: uint32 = 0u32;
+        while round < 24u32 {
+            i = 0u32;
+            while i < 25u32 {
+                lanes[i] = state[i];
+                i = i + 1u32;
+            }
+
+            var C: uint64[5];
+            var D: uint64[5];
+
+            i = 0u32;
+            while i < 5u32 {
+                C[i] = lanes[i] ^ lanes[i + 5u32] ^ lanes[i + 10u32] ^ lanes[i + 15u32] ^ lanes[i + 20u32];
+                i = i + 1u32;
+            }
+
+            i = 0u32;
+            while i < 5u32 {
+                D[i] = C[(i + 4u32) % 5u32] ^ KeccakRotl64(C[(i + 1u32) % 5u32], 1u32);
+                i = i + 1u32;
+            }
+
+            i = 0u32;
+            while i < 5u32 {
+                var j: uint32 = 0u32;
+                while j < 5u32 {
+                    lanes[i + j * 5u32] = lanes[i + j * 5u32] ^ D[i];
+                    j = j + 1u32;
+                }
+                i = i + 1u32;
+            }
+
+            var x: uint32 = 1u32;
+            var y: uint32 = 0u32;
+            var current: uint64 = lanes[x + y * 5u32];
+            var t: uint32 = 0u32;
+            while t < 24u32 {
+                let r = ((t + 1u32) * (t + 2u32) / 2u32) % 64u32;
+                let ny = (2u32 * x + 3u32 * y) % 5u32;
+                let nx = y;
+                let temp = lanes[nx + ny * 5u32];
+                lanes[nx + ny * 5u32] = KeccakRotl64(current, r);
+                current = temp;
+                x = nx;
+                y = ny;
+                t = t + 1u32;
+            }
+
+            i = 0u32;
+            while i < 25u32 {
+                state[i] = lanes[i];
+                i = i + 1u32;
+            }
+
+            i = 0u32;
+            while i < 25u32 {
+                lanes[i] = state[i];
+                i = i + 1u32;
+            }
+
+            i = 0u32;
+            while i < 5u32 {
+                var j: uint32 = 0u32;
+                while j < 5u32 {
+                    let idx = i + j * 5u32;
+                    state[idx] = lanes[idx] ^ ((~lanes[(i + 1u32) % 5u32 + j * 5u32]) & lanes[(i + 2u32) % 5u32 + j * 5u32]);
+                    j = j + 1u32;
+                }
+                i = i + 1u32;
+            }
+
+            state[0] = state[0] ^ KeccakRoundConstants(round);
+
+            round = round + 1u32;
+        }
+    }
+
+    pub func Sha3Init(ctx: *Sha3Context, digestSize: uint32) {
+        ctx.digestSize = digestSize;
+        if digestSize == 32u32 {
+            ctx.blockSize = 136u32;
+        } else {
+            ctx.blockSize = 72u32;
+        }
+        ctx.bufLen = 0u32;
+        var i: uint32 = 0u32;
+        while i < 25u32 {
+            ctx.state[i] = 0u64;
+            i = i + 1u32;
+        }
+    }
+
+    pub func Sha3Update(ctx: *Sha3Context, data: *const uint8, len: uint) {
+        var remaining: uint = len;
+        var offset: uint = 0u;
+
+        if ctx.bufLen > 0u32 {
+            let space = ctx.blockSize - ctx.bufLen;
+            let fill  = (remaining as uint32 < space) ? remaining as uint32 : space;
+
+            var i: uint32 = 0u32;
+            while i < fill {
+                ctx.buf[ctx.bufLen + i] = data[offset + i as uint];
+                i = i + 1u32;
+            }
+            ctx.bufLen = ctx.bufLen + fill;
+            offset    = offset + fill as uint;
+            remaining = remaining - fill as uint;
+
+            if ctx.bufLen == ctx.blockSize {
+                var i: uint32 = 0u32;
+                while i < ctx.blockSize {
+                    var laneIdx = (i % 8u32) * 5u32 + i / 40u32;
+                    var byteInLane = (i / 8u32) % 5u32;
+                    ctx.state[laneIdx] = ctx.state[laneIdx] ^ (ctx.buf[i] as uint64 << (byteInLane * 8u32));
+                    i = i + 1u32;
+                }
+                KeccakF1600(&ctx.state[0]);
+                ctx.bufLen = 0u32;
+            }
+        }
+
+        while remaining >= ctx.blockSize as uint {
+            var i: uint32 = 0u32;
+            while i < ctx.blockSize {
+                var laneIdx = (i % 8u32) * 5u32 + i / 40u32;
+                var byteInLane = (i / 8u32) % 5u32;
+                ctx.state[laneIdx] = ctx.state[laneIdx] ^ (data[offset + i as uint] as uint64 << (byteInLane * 8u32));
+                i = i + 1u32;
+            }
+            KeccakF1600(&ctx.state[0]);
+            offset    = offset + ctx.blockSize as uint;
+            remaining = remaining - ctx.blockSize as uint;
+        }
+
+        var i: uint32 = 0u32;
+        while i < remaining as uint32 {
+            ctx.buf[i] = data[offset + i as uint];
+            i = i + 1u32;
+        }
+        ctx.bufLen = remaining as uint32;
+    }
+
+    pub func Sha3Final(ctx: *Sha3Context, digest: *uint8) {
+        ctx.buf[ctx.bufLen] = 0x06u8;
+        var i: uint32 = ctx.bufLen + 1u32;
+        while i < ctx.blockSize - 1u32 {
+            ctx.buf[i] = 0x00u8;
+            i = i + 1u32;
+        }
+        ctx.buf[ctx.blockSize - 1u32] = 0x80u8;
+
+        i = 0u32;
+        while i < ctx.blockSize {
+            var laneIdx = (i % 8u32) * 5u32 + i / 40u32;
+            var byteInLane = (i / 8u32) % 5u32;
+            ctx.state[laneIdx] = ctx.state[laneIdx] ^ (ctx.buf[i] as uint64 << (byteInLane * 8u32));
+            i = i + 1u32;
+        }
+        KeccakF1600(&ctx.state[0]);
+
+        var outPos: uint32 = 0u32;
+        i = 0u32;
+        while outPos < ctx.digestSize {
+            var laneIdx = (i % 8u32) * 5u32 + i / 40u32;
+            var word = ctx.state[laneIdx];
+            var byteInLane: uint32 = 0u32;
+            while byteInLane < 8u32 && outPos < ctx.digestSize {
+                digest[outPos] = ((word >> (byteInLane * 8u32)) & 0xFFu64) as uint8;
+                outPos = outPos + 1u32;
+                byteInLane = byteInLane + 1u32;
+            }
+            i = i + 8u32;
+        }
+    }
+
+    pub func Sha3256(data: *const uint8, len: uint, digest: *uint8) {
+        var ctx: Sha3Context;
+        Sha3Init(&ctx, 32u32);
+        Sha3Update(&ctx, data, len);
+        Sha3Final(&ctx, digest);
+    }
+
+    pub func Sha3512(data: *const uint8, len: uint, digest: *uint8) {
+        var ctx: Sha3Context;
+        Sha3Init(&ctx, 64u32);
+        Sha3Update(&ctx, data, len);
+        Sha3Final(&ctx, digest);
+    }
+}
