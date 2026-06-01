@@ -1,15 +1,4 @@
-/*
-    Crypto — Self-test vectors
-    Known-answer tests for SHA-1, SHA-256, HMAC-SHA256, AES-128-CBC
-    Copyright © 2026 Rux Contributors
-    Licensed under the MIT License
-*/
-
 module Crypto {
-
-
-    // Internal — byte comparison helper
-
 
     func BytesEqual(a: *const uint8, b: *const uint8, len: uint32) -> bool32 {
         var i: uint32 = 0u32;
@@ -20,237 +9,156 @@ module Crypto {
         return true;
     }
 
-
-    // Public — run all self-tests, returns true if all pass
-
-
-    /// Runs known-answer tests for every primitive in this package.
-    /// Returns true if all tests pass, false if any digest or ciphertext
-    /// does not match the expected value.
-    /// Call this once at startup to verify the build is correct.
     pub func CryptoSelfTest() -> bool32 {
+        var ok: bool32;
 
+        ok = true;
 
-        // SHA-1 — FIPS 180-4 example: SHA1("abc") = A9993E36...
-        {
-            var digest: uint8[20];
-            Sha1Hash("abc" as *const uint8, 3u, &digest[0]);
+        var sha1Digest: uint8[20];
+        Sha1Hash("abc" as *const uint8, 3u, &sha1Digest[0]);
+        var sha1Expected: uint8[20];
+        sha1Expected[0]  = 0xA9u8; sha1Expected[1]  = 0x99u8; sha1Expected[2]  = 0x3Eu8; sha1Expected[3]  = 0x36u8;
+        sha1Expected[4]  = 0x47u8; sha1Expected[5]  = 0x06u8; sha1Expected[6]  = 0x81u8; sha1Expected[7]  = 0x6Au8;
+        sha1Expected[8]  = 0xBAu8; sha1Expected[9]  = 0x3Eu8; sha1Expected[10] = 0x25u8; sha1Expected[11] = 0x71u8;
+        sha1Expected[12] = 0x78u8; sha1Expected[13] = 0x50u8; sha1Expected[14] = 0xC2u8; sha1Expected[15] = 0x6Cu8;
+        sha1Expected[16] = 0x9Cu8; sha1Expected[17] = 0xD0u8; sha1Expected[18] = 0xD8u8; sha1Expected[19] = 0x9Du8;
+        if !BytesEqual(&sha1Digest[0], &sha1Expected[0], 20u32) { ok = false; }
 
-            var expected: uint8[20];
-            expected[0]  = 0xA9u8; expected[1]  = 0x99u8; expected[2]  = 0x3Eu8; expected[3]  = 0x36u8;
-            expected[4]  = 0x47u8; expected[5]  = 0x06u8; expected[6]  = 0x81u8; expected[7]  = 0x6Au8;
-            expected[8]  = 0xBAu8; expected[9]  = 0x3Eu8; expected[10] = 0x25u8; expected[11] = 0x71u8;
-            expected[12] = 0x78u8; expected[13] = 0x50u8; expected[14] = 0xC2u8; expected[15] = 0x6Cu8;
-            expected[16] = 0x9Cu8; expected[17] = 0xD0u8; expected[18] = 0xD8u8; expected[19] = 0x9Du8;
+        var sha256Digest1: uint8[32];
+        Sha256Hash("abc" as *const uint8, 3u, &sha256Digest1[0]);
+        var sha256Expected1: uint8[32];
+        sha256Expected1[0]  = 0xBAu8; sha256Expected1[1]  = 0x78u8; sha256Expected1[2]  = 0x16u8; sha256Expected1[3]  = 0xBFu8;
+        sha256Expected1[4]  = 0x8Fu8; sha256Expected1[5]  = 0x01u8; sha256Expected1[6]  = 0xCFu8; sha256Expected1[7]  = 0xEAu8;
+        sha256Expected1[8]  = 0x41u8; sha256Expected1[9]  = 0x41u8; sha256Expected1[10] = 0x40u8; sha256Expected1[11] = 0xDEu8;
+        sha256Expected1[12] = 0x5Du8; sha256Expected1[13] = 0xAEu8; sha256Expected1[14] = 0x22u8; sha256Expected1[15] = 0x23u8;
+        sha256Expected1[16] = 0xB0u8; sha256Expected1[17] = 0x03u8; sha256Expected1[18] = 0x61u8; sha256Expected1[19] = 0xA3u8;
+        sha256Expected1[20] = 0x96u8; sha256Expected1[21] = 0x17u8; sha256Expected1[22] = 0x7Au8; sha256Expected1[23] = 0x9Cu8;
+        sha256Expected1[24] = 0xB4u8; sha256Expected1[25] = 0x10u8; sha256Expected1[26] = 0xFFu8; sha256Expected1[27] = 0x61u8;
+        sha256Expected1[28] = 0xF2u8; sha256Expected1[29] = 0x00u8; sha256Expected1[30] = 0x15u8; sha256Expected1[31] = 0xADu8;
+        if !BytesEqual(&sha256Digest1[0], &sha256Expected1[0], 32u32) { ok = false; }
 
-            if !BytesEqual(&digest[0], &expected[0], 20u32) { return false; }
-        }
+        var sha256Digest2: uint8[32];
+        Sha256Hash("" as *const uint8, 0u, &sha256Digest2[0]);
+        var sha256Expected2: uint8[32];
+        sha256Expected2[0]  = 0xE3u8; sha256Expected2[1]  = 0xB0u8; sha256Expected2[2]  = 0xC4u8; sha256Expected2[3]  = 0x42u8;
+        sha256Expected2[4]  = 0x98u8; sha256Expected2[5]  = 0xFCu8; sha256Expected2[6]  = 0x1Cu8; sha256Expected2[7]  = 0x14u8;
+        sha256Expected2[8]  = 0x9Au8; sha256Expected2[9]  = 0xFBu8; sha256Expected2[10] = 0xF4u8; sha256Expected2[11] = 0xC8u8;
+        sha256Expected2[12] = 0x99u8; sha256Expected2[13] = 0x6Fu8; sha256Expected2[14] = 0xB9u8; sha256Expected2[15] = 0x24u8;
+        sha256Expected2[16] = 0x27u8; sha256Expected2[17] = 0xAEu8; sha256Expected2[18] = 0x41u8; sha256Expected2[19] = 0xE4u8;
+        sha256Expected2[20] = 0x64u8; sha256Expected2[21] = 0x9Bu8; sha256Expected2[22] = 0x93u8; sha256Expected2[23] = 0x4Cu8;
+        sha256Expected2[24] = 0xA4u8; sha256Expected2[25] = 0x95u8; sha256Expected2[26] = 0x99u8; sha256Expected2[27] = 0x1Bu8;
+        sha256Expected2[28] = 0x78u8; sha256Expected2[29] = 0x52u8; sha256Expected2[30] = 0xB8u8; sha256Expected2[31] = 0x55u8;
+        if !BytesEqual(&sha256Digest2[0], &sha256Expected2[0], 32u32) { ok = false; }
 
+        var hmacKey: uint8[20];
+        var hmacIdx: uint32 = 0u32;
+        while hmacIdx < 20u32 { hmacKey[hmacIdx] = 0x0Bu8; hmacIdx = hmacIdx + 1u32; }
+        var hmacOut: uint8[32];
+        HmacSha256(&hmacKey[0], 20u, "Hi There" as *const uint8, 8u, &hmacOut[0]);
+        var hmacExpected: uint8[32];
+        hmacExpected[0]  = 0xB0u8; hmacExpected[1]  = 0x34u8; hmacExpected[2]  = 0x4Cu8; hmacExpected[3]  = 0x61u8;
+        hmacExpected[4]  = 0xD8u8; hmacExpected[5]  = 0xDBu8; hmacExpected[6]  = 0x38u8; hmacExpected[7]  = 0x53u8;
+        hmacExpected[8]  = 0x5Cu8; hmacExpected[9]  = 0xA8u8; hmacExpected[10] = 0xAFu8; hmacExpected[11] = 0xCEu8;
+        hmacExpected[12] = 0xAFu8; hmacExpected[13] = 0x0Bu8; hmacExpected[14] = 0xF1u8; hmacExpected[15] = 0x2Bu8;
+        hmacExpected[16] = 0x88u8; hmacExpected[17] = 0x1Du8; hmacExpected[18] = 0xC2u8; hmacExpected[19] = 0x00u8;
+        hmacExpected[20] = 0xC9u8; hmacExpected[21] = 0x83u8; hmacExpected[22] = 0x3Du8; hmacExpected[23] = 0xA7u8;
+        hmacExpected[24] = 0x26u8; hmacExpected[25] = 0xE9u8; hmacExpected[26] = 0x37u8; hmacExpected[27] = 0x6Cu8;
+        hmacExpected[28] = 0x2Eu8; hmacExpected[29] = 0x32u8; hmacExpected[30] = 0xCFu8; hmacExpected[31] = 0xF7u8;
+        if !BytesEqual(&hmacOut[0], &hmacExpected[0], 32u32) { ok = false; }
 
-        // SHA-256 — FIPS 180-4 example: SHA256("abc") = BA7816BF...
-        {
-            var digest: uint8[32];
-            Sha256Hash("abc" as *const uint8, 3u, &digest[0]);
+        var aesKey: uint8[16];
+        aesKey[0]  = 0x2Bu8; aesKey[1]  = 0x7Eu8; aesKey[2]  = 0x15u8; aesKey[3]  = 0x16u8;
+        aesKey[4]  = 0x28u8; aesKey[5]  = 0xAEu8; aesKey[6]  = 0xD2u8; aesKey[7]  = 0xA6u8;
+        aesKey[8]  = 0xABu8; aesKey[9]  = 0xF7u8; aesKey[10] = 0x15u8; aesKey[11] = 0x88u8;
+        aesKey[12] = 0x09u8; aesKey[13] = 0xCFu8; aesKey[14] = 0x4Fu8; aesKey[15] = 0x3Cu8;
+        var aesIv: uint8[16];
+        var aesIdx: uint32 = 0u32;
+        while aesIdx < 16u32 { aesIv[aesIdx] = 0x00u8; aesIdx = aesIdx + 1u32; }
+        var aesPt: uint8[16];
+        aesPt[0]  = 0x6Bu8; aesPt[1]  = 0xC1u8; aesPt[2]  = 0xBEu8; aesPt[3]  = 0xE2u8;
+        aesPt[4]  = 0x2Eu8; aesPt[5]  = 0x40u8; aesPt[6]  = 0x9Fu8; aesPt[7]  = 0x96u8;
+        aesPt[8]  = 0xE9u8; aesPt[9]  = 0x3Du8; aesPt[10] = 0x7Eu8; aesPt[11] = 0x11u8;
+        aesPt[12] = 0x73u8; aesPt[13] = 0x93u8; aesPt[14] = 0x17u8; aesPt[15] = 0x2Au8;
+        var aesCt: uint8[16];
+        var aesCtx: AesContext;
+        AesInitEncrypt(&aesCtx, &aesKey[0], 128u32);
+        AesCbcEncrypt(&aesCtx, &aesIv[0], &aesPt[0], &aesCt[0], 16u32);
+        var aesExpected: uint8[16];
+        aesExpected[0]  = 0x76u8; aesExpected[1]  = 0x49u8; aesExpected[2]  = 0xABu8; aesExpected[3]  = 0xACu8;
+        aesExpected[4]  = 0x81u8; aesExpected[5]  = 0x19u8; aesExpected[6]  = 0xB2u8; aesExpected[7]  = 0x46u8;
+        aesExpected[8]  = 0xCEu8; aesExpected[9]  = 0xE9u8; aesExpected[10] = 0x8Eu8; aesExpected[11] = 0x9Bu8;
+        aesExpected[12] = 0x12u8; aesExpected[13] = 0xE9u8; aesExpected[14] = 0x19u8; aesExpected[15] = 0x7Du8;
+        if !BytesEqual(&aesCt[0], &aesExpected[0], 16u32) { ok = false; }
 
-            var expected: uint8[32];
-            expected[0]  = 0xBAu8; expected[1]  = 0x78u8; expected[2]  = 0x16u8; expected[3]  = 0xBFu8;
-            expected[4]  = 0x8Fu8; expected[5]  = 0x01u8; expected[6]  = 0xCFu8; expected[7]  = 0xEAu8;
-            expected[8]  = 0x41u8; expected[9]  = 0x41u8; expected[10] = 0x40u8; expected[11] = 0xDEu8;
-            expected[12] = 0x5Du8; expected[13] = 0xAEu8; expected[14] = 0x22u8; expected[15] = 0x23u8;
-            expected[16] = 0xB0u8; expected[17] = 0x03u8; expected[18] = 0x61u8; expected[19] = 0xA3u8;
-            expected[20] = 0x96u8; expected[21] = 0x17u8; expected[22] = 0x7Au8; expected[23] = 0x9Cu8;
-            expected[24] = 0xB4u8; expected[25] = 0x10u8; expected[26] = 0xFFu8; expected[27] = 0x61u8;
-            expected[28] = 0xF2u8; expected[29] = 0x00u8; expected[30] = 0x15u8; expected[31] = 0xADu8;
+        var sha512Digest: uint8[64];
+        Sha512Hash("abc" as *const uint8, 3u, &sha512Digest[0]);
+        var sha512Expected: uint8[64];
+        sha512Expected[0]  = 0xDDu8; sha512Expected[1]  = 0xAFu8; sha512Expected[2]  = 0x35u8; sha512Expected[3]  = 0xA1u8;
+        sha512Expected[4]  = 0x93u8; sha512Expected[5]  = 0x61u8; sha512Expected[6]  = 0x7Cu8; sha512Expected[7]  = 0xBAu8;
+        sha512Expected[8]  = 0xCCu8; sha512Expected[9]  = 0x93u8; sha512Expected[10] = 0x73u8; sha512Expected[11] = 0xEBu8;
+        sha512Expected[12] = 0x87u8; sha512Expected[13] = 0x3Fu8; sha512Expected[14] = 0x91u8; sha512Expected[15] = 0xD1u8;
+        sha512Expected[16] = 0x54u8; sha512Expected[17] = 0x94u8; sha512Expected[18] = 0x0Cu8; sha512Expected[19] = 0x99u8;
+        sha512Expected[20] = 0xEEu8; sha512Expected[21] = 0x6Du8; sha512Expected[22] = 0xDEu8; sha512Expected[23] = 0xFAu8;
+        sha512Expected[24] = 0x3Fu8; sha512Expected[25] = 0x60u8; sha512Expected[26] = 0x59u8; sha512Expected[27] = 0x5Eu8;
+        sha512Expected[28] = 0xD9u8; sha512Expected[29] = 0xE1u8; sha512Expected[30] = 0x05u8; sha512Expected[31] = 0xE1u8;
+        sha512Expected[32] = 0xE3u8; sha512Expected[33] = 0x04u8; sha512Expected[34] = 0x16u8; sha512Expected[35] = 0xDBu8;
+        sha512Expected[36] = 0x79u8; sha512Expected[37] = 0x3Cu8; sha512Expected[38] = 0x0Cu8; sha512Expected[39] = 0x92u8;
+        sha512Expected[40] = 0xE3u8; sha512Expected[41] = 0x4Eu8; sha512Expected[42] = 0x8Du8; sha512Expected[43] = 0x14u8;
+        sha512Expected[44] = 0x5Eu8; sha512Expected[45] = 0xE8u8; sha512Expected[46] = 0x03u8; sha512Expected[47] = 0xF2u8;
+        sha512Expected[48] = 0x2Du8; sha512Expected[49] = 0xA0u8; sha512Expected[50] = 0x7Eu8; sha512Expected[51] = 0x6Cu8;
+        sha512Expected[52] = 0x37u8; sha512Expected[53] = 0x73u8; sha512Expected[54] = 0xE7u8; sha512Expected[55] = 0x26u8;
+        sha512Expected[56] = 0x0Fu8; sha512Expected[57] = 0x55u8; sha512Expected[58] = 0x33u8; sha512Expected[59] = 0xA3u8;
+        sha512Expected[60] = 0x34u8; sha512Expected[61] = 0x50u8; sha512Expected[62] = 0x9Du8; sha512Expected[63] = 0xBFu8;
+        if !BytesEqual(&sha512Digest[0], &sha512Expected[0], 64u32) { ok = false; }
 
-            if !BytesEqual(&digest[0], &expected[0], 32u32) { return false; }
-        }
+        var sha3Digest: uint8[32];
+        Sha3256("abc" as *const uint8, 3u, &sha3Digest[0]);
+        var sha3Expected: uint8[32];
+        sha3Expected[0]  = 0x3Au8; sha3Expected[1]  = 0x98u8; sha3Expected[2]  = 0x5Du8; sha3Expected[3]  = 0xA7u8;
+        sha3Expected[4]  = 0x4Fu8; sha3Expected[5]  = 0xA2u8; sha3Expected[6]  = 0x54u8; sha3Expected[7]  = 0x36u8;
+        sha3Expected[8]  = 0x84u8; sha3Expected[9]  = 0x9Eu8; sha3Expected[10] = 0x6Du8; sha3Expected[11] = 0xAAu8;
+        sha3Expected[12] = 0xF4u8; sha3Expected[13] = 0x3Du8; sha3Expected[14] = 0xCDu8; sha3Expected[15] = 0x62u8;
+        sha3Expected[16] = 0x19u8; sha3Expected[17] = 0x67u8; sha3Expected[18] = 0x7Du8; sha3Expected[19] = 0x1Au8;
+        sha3Expected[20] = 0x22u8; sha3Expected[21] = 0x99u8; sha3Expected[22] = 0x6Cu8; sha3Expected[23] = 0x44u8;
+        sha3Expected[24] = 0x47u8; sha3Expected[25] = 0xE6u8; sha3Expected[26] = 0xABu8; sha3Expected[27] = 0x0Fu8;
+        sha3Expected[28] = 0x09u8; sha3Expected[29] = 0x11u8; sha3Expected[30] = 0xE2u8; sha3Expected[31] = 0x1Eu8;
+        if !BytesEqual(&sha3Digest[0], &sha3Expected[0], 32u32) { ok = false; }
 
+        var chachaKey: uint8[32];
+        var chachaNonce: uint8[12];
+        var chachaIdx: uint32 = 0u32;
+        while chachaIdx < 32u32 { chachaKey[chachaIdx] = chachaIdx as uint8; chachaIdx = chachaIdx + 1u32; }
+        while chachaIdx >= 32u32 && chachaIdx < 44u32 { chachaNonce[chachaIdx - 32u32] = chachaIdx as uint8; chachaIdx = chachaIdx + 1u32; }
+        var chachaInput: uint8[64];
+        var chachaOutput: uint8[64];
+        chachaIdx = 0u32;
+        while chachaIdx < 64u32 { chachaInput[chachaIdx] = 0u8; chachaIdx = chachaIdx + 1u32; }
+        ChaCha20Encrypt(&chachaKey[0], &chachaNonce[0], 0u32, &chachaInput[0], &chachaOutput[0], 64u32);
+        var chachaExpected: uint8[16];
+        chachaExpected[0]  = 0xE4u8; chachaExpected[1]  = 0xE6u8; chachaExpected[2]  = 0xF4u8; chachaExpected[3]  = 0xB7u8;
+        chachaExpected[4]  = 0x0Bu8; chachaExpected[5]  = 0x5Fu8; chachaExpected[6]  = 0x4Bu8; chachaExpected[7]  = 0x6Au8;
+        chachaExpected[8]  = 0x8Cu8; chachaExpected[9]  = 0x0Fu8; chachaExpected[10] = 0x8Cu8; chachaExpected[11] = 0x94u8;
+        chachaExpected[12] = 0xA6u8; chachaExpected[13] = 0x41u8; chachaExpected[14] = 0xF3u8; chachaExpected[15] = 0x67u8;
+        if !BytesEqual(&chachaOutput[0], &chachaExpected[0], 16u32) { ok = false; }
 
-        // SHA-256 — empty string: SHA256("") = E3B0C442...
-        {
-            var digest: uint8[32];
-            Sha256Hash("" as *const uint8, 0u, &digest[0]);
+        var hexInput: uint8[4];
+        hexInput[0] = 0xDEu8; hexInput[1] = 0xADu8; hexInput[2] = 0xBEu8; hexInput[3] = 0xEFu8;
+        var hexOut: uint8[16];
+        HexEncode(&hexInput[0], 4u, &hexOut[0]);
+        var hexBinOut: uint8[4];
+        var hexDecoded = HexDecode(&hexOut[0], 8u, &hexBinOut[0]);
+        if hexDecoded != 4u { ok = false; }
+        if !BytesEqual(&hexInput[0], &hexBinOut[0], 4u32) { ok = false; }
 
-            var expected: uint8[32];
-            expected[0]  = 0xE3u8; expected[1]  = 0xB0u8; expected[2]  = 0xC4u8; expected[3]  = 0x42u8;
-            expected[4]  = 0x98u8; expected[5]  = 0xFCu8; expected[6]  = 0x1Cu8; expected[7]  = 0x14u8;
-            expected[8]  = 0x9Au8; expected[9]  = 0xFBu8; expected[10] = 0xF4u8; expected[11] = 0xC8u8;
-            expected[12] = 0x99u8; expected[13] = 0x6Fu8; expected[14] = 0xB9u8; expected[15] = 0x24u8;
-            expected[16] = 0x27u8; expected[17] = 0xAEu8; expected[18] = 0x41u8; expected[19] = 0xE4u8;
-            expected[20] = 0x64u8; expected[21] = 0x9Bu8; expected[22] = 0x93u8; expected[23] = 0x4Cu8;
-            expected[24] = 0xA4u8; expected[25] = 0x95u8; expected[26] = 0x99u8; expected[27] = 0x1Bu8;
-            expected[28] = 0x78u8; expected[29] = 0x52u8; expected[30] = 0xB8u8; expected[31] = 0x55u8;
+        var b64Input: uint8[4];
+        b64Input[0] = 0xDEu8; b64Input[1] = 0xADu8; b64Input[2] = 0xBEu8; b64Input[3] = 0xEFu8;
+        var b64Out: uint8[16];
+        var b64EncodedLen = Base64Encode(&b64Input[0], 4u, &b64Out[0]);
+        var b64BinOut: uint8[4];
+        var b64DecodedLen = Base64Decode(&b64Out[0], b64EncodedLen, &b64BinOut[0]);
+        if b64DecodedLen != 4u { ok = false; }
+        if !BytesEqual(&b64Input[0], &b64BinOut[0], 4u32) { ok = false; }
 
-            if !BytesEqual(&digest[0], &expected[0], 32u32) { return false; }
-        }
-
-
-        // HMAC-SHA256 — RFC 4231 test case 1
-        // key  = 0x0b × 20
-        // data = "Hi There"
-        // expected = b0344c61...
-        {
-            var key: uint8[20];
-            var i: uint32 = 0u32;
-            while i < 20u32 { key[i] = 0x0Bu8; i = i + 1u32; }
-
-            var out: uint8[32];
-            HmacSha256(&key[0], 20u, "Hi There" as *const uint8, 8u, &out[0]);
-
-            var expected: uint8[32];
-            expected[0]  = 0xB0u8; expected[1]  = 0x34u8; expected[2]  = 0x4Cu8; expected[3]  = 0x61u8;
-            expected[4]  = 0xD8u8; expected[5]  = 0xDBu8; expected[6]  = 0x38u8; expected[7]  = 0x53u8;
-            expected[8]  = 0x5Cu8; expected[9]  = 0xA8u8; expected[10] = 0xAFu8; expected[11] = 0xCEu8;
-            expected[12] = 0xAFu8; expected[13] = 0x0Bu8; expected[14] = 0xF1u8; expected[15] = 0x2Bu8;
-            expected[16] = 0x88u8; expected[17] = 0x1Du8; expected[18] = 0xC2u8; expected[19] = 0x00u8;
-            expected[20] = 0xC9u8; expected[21] = 0x83u8; expected[22] = 0x3Du8; expected[23] = 0xA7u8;
-            expected[24] = 0x26u8; expected[25] = 0xE9u8; expected[26] = 0x37u8; expected[27] = 0x6Cu8;
-            expected[28] = 0x2Eu8; expected[29] = 0x32u8; expected[30] = 0xCFu8; expected[31] = 0xF7u8;
-
-            if !BytesEqual(&out[0], &expected[0], 32u32) { return false; }
-        }
-
-
-        // AES-128-CBC — NIST SP 800-38A F.2.1
-        // key = 2b7e1516 28aed2a6 abf71588 09cf4f3c
-        // iv  = 00000000 00000000 00000000 00000000
-        // pt  = 6bc1bee2 2e409f96 e93d7e11 7393172a
-        // ct  = 7649abac 8119b246 cee98e9b 12e9197d
-        {
-            var key: uint8[16];
-            key[0]  = 0x2Bu8; key[1]  = 0x7Eu8; key[2]  = 0x15u8; key[3]  = 0x16u8;
-            key[4]  = 0x28u8; key[5]  = 0xAEu8; key[6]  = 0xD2u8; key[7]  = 0xA6u8;
-            key[8]  = 0xABu8; key[9]  = 0xF7u8; key[10] = 0x15u8; key[11] = 0x88u8;
-            key[12] = 0x09u8; key[13] = 0xCFu8; key[14] = 0x4Fu8; key[15] = 0x3Cu8;
-
-            var iv: uint8[16];
-            var i: uint32 = 0u32;
-            while i < 16u32 { iv[i] = 0x00u8; i = i + 1u32; }
-
-            var pt: uint8[16];
-            pt[0]  = 0x6Bu8; pt[1]  = 0xC1u8; pt[2]  = 0xBEu8; pt[3]  = 0xE2u8;
-            pt[4]  = 0x2Eu8; pt[5]  = 0x40u8; pt[6]  = 0x9Fu8; pt[7]  = 0x96u8;
-            pt[8]  = 0xE9u8; pt[9]  = 0x3Du8; pt[10] = 0x7Eu8; pt[11] = 0x11u8;
-            pt[12] = 0x73u8; pt[13] = 0x93u8; pt[14] = 0x17u8; pt[15] = 0x2Au8;
-
-            var ct: uint8[16];
-            var ctx: AesContext;
-            AesInitEncrypt(&ctx, &key[0], 128u32);
-            AesCbcEncrypt(&ctx, &iv[0], &pt[0], &ct[0], 16u32);
-
-            var expected: uint8[16];
-            expected[0]  = 0x76u8; expected[1]  = 0x49u8; expected[2]  = 0xABu8; expected[3]  = 0xACu8;
-            expected[4]  = 0x81u8; expected[5]  = 0x19u8; expected[6]  = 0xB2u8; expected[7]  = 0x46u8;
-            expected[8]  = 0xCEu8; expected[9]  = 0xE9u8; expected[10] = 0x8Eu8; expected[11] = 0x9Bu8;
-            expected[12] = 0x12u8; expected[13] = 0xE9u8; expected[14] = 0x19u8; expected[15] = 0x7Du8;
-
-            if !BytesEqual(&ct[0], &expected[0], 16u32) { return false; }
-        }
-
-
-        // SHA-512 — FIPS 180-4 example: SHA512("abc")
-        {
-            var digest: uint8[64];
-            Sha512Hash("abc" as *const uint8, 3u, &digest[0]);
-
-            var expected: uint8[64];
-            expected[0]  = 0xDDu8; expected[1]  = 0xAFu8; expected[2]  = 0x35u8; expected[3]  = 0xA1u8;
-            expected[4]  = 0x93u8; expected[5]  = 0x61u8; expected[6]  = 0x7Cu8; expected[7]  = 0xBAu8;
-            expected[8]  = 0xCCu8; expected[9]  = 0x93u8; expected[10] = 0x73u8; expected[11] = 0xEBu8;
-            expected[12] = 0x87u8; expected[13] = 0x3Fu8; expected[14] = 0x91u8; expected[15] = 0xD1u8;
-            expected[16] = 0x54u8; expected[17] = 0x94u8; expected[18] = 0x0Cu8; expected[19] = 0x99u8;
-            expected[20] = 0xEEu8; expected[21] = 0x6Du8; expected[22] = 0xDEu8; expected[23] = 0xFAu8;
-            expected[24] = 0x3Fu8; expected[25] = 0x60u8; expected[26] = 0x59u8; expected[27] = 0x5Eu8;
-            expected[28] = 0xD9u8; expected[29] = 0xE1u8; expected[30] = 0x05u8; expected[31] = 0xE1u8;
-            expected[32] = 0xE3u8; expected[33] = 0x04u8; expected[34] = 0x16u8; expected[35] = 0xDBu8;
-            expected[36] = 0x79u8; expected[37] = 0x3Cu8; expected[38] = 0x0Cu8; expected[39] = 0x92u8;
-            expected[40] = 0xE3u8; expected[41] = 0x4Eu8; expected[42] = 0x8Du8; expected[43] = 0x14u8;
-            expected[44] = 0x5Eu8; expected[45] = 0xE8u8; expected[46] = 0x03u8; expected[47] = 0xF2u8;
-            expected[48] = 0x2Du8; expected[49] = 0xA0u8; expected[50] = 0x7Eu8; expected[51] = 0x6Cu8;
-            expected[52] = 0x37u8; expected[53] = 0x73u8; expected[54] = 0xE7u8; expected[55] = 0x26u8;
-            expected[56] = 0x0Fu8; expected[57] = 0x55u8; expected[58] = 0x33u8; expected[59] = 0xA3u8;
-            expected[60] = 0x34u8; expected[61] = 0x50u8; expected[62] = 0x9Du8; expected[63] = 0xBFu8;
-
-            if !BytesEqual(&digest[0], &expected[0], 64u32) { return false; }
-        }
-
-        // SHA-3-256 — NIST FIPS 202: SHA3-256("abc")
-        {
-            var digest: uint8[32];
-            Sha3256("abc" as *const uint8, 3u, &digest[0]);
-
-            var expected: uint8[32];
-            expected[0]  = 0x3Au; expected[1]  = 0x98u; expected[2]  = 0x5Du; expected[3]  = 0xA7u;
-            expected[4]  = 0x4Fu; expected[5]  = 0xA2u; expected[6]  = 0x54u; expected[7]  = 0x36u;
-            expected[8]  = 0x84u; expected[9]  = 0x9Eu; expected[10] = 0x6Du; expected[11] = 0xAAu;
-            expected[12] = 0xF4u; expected[13] = 0x3Du; expected[14] = 0xCDu; expected[15] = 0x62u;
-            expected[16] = 0x19u; expected[17] = 0x67u; expected[18] = 0x7Du; expected[19] = 0x1Au;
-            expected[20] = 0x22u; expected[21] = 0x99u; expected[22] = 0x6Cu; expected[23] = 0x44u;
-            expected[24] = 0x47u; expected[25] = 0xE6u; expected[26] = 0xABu; expected[27] = 0x0Fu;
-            expected[28] = 0x09u; expected[29] = 0x11u; expected[30] = 0xE2u; expected[31] = 0x1Eu;
-
-            if !BytesEqual(&digest[0], &expected[0], 32u32) { return false; }
-        }
-
-        // ChaCha20 — RFC 8439 § 2.4.2 test vector
-        // key = 00..1f, nonce = 00..0b, counter = 0
-        // input = all zeros
-        // output keystream first 64 bytes should match known value
-        {
-            var key: uint8[32];
-            var nonce: uint8[12];
-            var i: uint32 = 0u32;
-            while i < 32u32 { key[i] = i; i = i + 1u32; }
-            while i >= 32u32 && i < 44u32 { nonce[i - 32u32] = i as uint8; i = i + 1u32; }
-
-            var input: uint8[64];
-            var output: uint8[64];
-            i = 0u32;
-            while i < 64u32 { input[i] = 0u8; i = i + 1u32; }
-
-            ChaCha20Encrypt(&key[0], &nonce[0], 0u32, &input[0], &output[0], 64u32);
-
-            // First 16 bytes of RFC 8439 keystream block:
-            // E4E6F4B7 0B5F4B6A 8C0F8C94 A641F367
-            var expected: uint8[16];
-            expected[0]  = 0xE4u8; expected[1]  = 0xE6u8; expected[2]  = 0xF4u8; expected[3]  = 0xB7u8;
-            expected[4]  = 0x0Bu8; expected[5]  = 0x5Fu8; expected[6]  = 0x4Bu8; expected[7]  = 0x6Au8;
-            expected[8]  = 0x8Cu8; expected[9]  = 0x0Fu8; expected[10] = 0x8Cu8; expected[11] = 0x94u8;
-            expected[12] = 0xA6u8; expected[13] = 0x41u8; expected[14] = 0xF3u8; expected[15] = 0x67u8;
-
-            if !BytesEqual(&output[0], &expected[0], 16u32) { return false; }
-        }
-
-        // Hex encoding roundtrip
-        {
-            var input: uint8[4];
-            input[0] = 0xDEu8; input[1] = 0xADu8; input[2] = 0xBEu8; input[3] = 0xEFu8;
-
-            var hexOut: uint8[16];
-            HexEncode(&input[0], 4u, &hexOut[0]);
-
-            var binOut: uint8[4];
-            let decoded = HexDecode(&hexOut[0], 8u, &binOut[0]);
-
-            if decoded != 4u { return false; }
-            if !BytesEqual(&input[0], &binOut[0], 4u32) { return false; }
-        }
-
-        // Base64 encoding roundtrip
-        {
-            var input: uint8[4];
-            input[0] = 0xDEu8; input[1] = 0xADu8; input[2] = 0xBEu8; input[3] = 0xEFu8;
-
-            var b64Out: uint8[16];
-            let encodedLen = Base64Encode(&input[0], 4u, &b64Out[0]);
-
-            var binOut: uint8[4];
-            let decodedLen = Base64Decode(&b64Out[0], encodedLen, &binOut[0]);
-
-            if decodedLen != 4u { return false; }
-            if !BytesEqual(&input[0], &binOut[0], 4u32) { return false; }
-        }
-
-        return true;
+        return ok;
     }
 }
