@@ -1,3 +1,10 @@
+/*
+    Crypto — SHA-3 / Keccak (FIPS 202)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
 module Crypto {
 
     pub const SHA3_256_DIGEST_SIZE: uint32 = 32u32;

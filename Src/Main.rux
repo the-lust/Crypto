@@ -1,3 +1,10 @@
+/*
+    Crypto — Self-test harness
+    Known-answer tests for all primitives
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
 module Crypto {
 
     func BytesEqual(a: *const uint8, b: *const uint8, len: uint32) -> bool32 {

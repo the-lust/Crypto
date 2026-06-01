@@ -1,3 +1,10 @@
+/*
+    Crypto — ChaCha20 stream cipher (RFC 8439)
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
 module Crypto {
 
     pub const CHACHA20_BLOCK_SIZE: uint32 = 64u32;

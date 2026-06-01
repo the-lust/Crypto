@@ -1,3 +1,10 @@
+/*
+    Crypto — Hex and Base64 encoding
+    Pure Rux implementation — no dependencies
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+
 module Crypto {
 
     func HexChar(val: uint8) -> uint8 {
